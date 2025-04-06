@@ -1,4 +1,4 @@
-from pyrage import encrypt, x25519
+from pyrage import encrypt, x25519  # type: ignore
 import argparse
 
 
