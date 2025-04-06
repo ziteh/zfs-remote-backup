@@ -1,8 +1,8 @@
 version: "3.7"
 services:
-  remote-backup:
+  zfs-remote-backup:
     build: .
-    container_name: remote_backup
+    container_name: zfs_remote_backup
     volumes:
       - /mnt:/mnt
       - /dev:/dev
