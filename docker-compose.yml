@@ -1,0 +1,10 @@
+version: "3.7"
+services:
+  remote-backup:
+    build: .
+    container_name: remote_backup
+    volumes:
+      - /mnt:/mnt
+      - /dev:/dev
+    privileged: true # ZFS
+    # restart: always
