@@ -10,9 +10,12 @@ RUN apt-get update && apt-get install -y \
     zfsutils-linux && \
     rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt /app/requirements.txt
-COPY zfs_snapshot_script.py /usr/local/bin/zfs_snapshot_script.py
 COPY crontab /etc/cron.d/zfs_snapshot_cron
+
+COPY requirements.txt /app/requirements.txt
+COPY app/zfs_snapshot_script.py /usr/local/bin/zfs_snapshot_script.py
+COPY app/sha256.py /usr/local/bin/sha256.py
+COPY app/test.py /usr/local/bin/test.py
 
 RUN python3 -m venv /app/venv
 RUN /app/venv/bin/pip install --no-cache-dir -r /app/requirements.txt

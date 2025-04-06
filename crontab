@@ -1,1 +1,1 @@
-0 * * * * root /usr/bin/python3 /usr/local/bin/zfs_snapshot_script.py
+* * * * * root /app/venv/bin/python3 /usr/local/bin/test.py
