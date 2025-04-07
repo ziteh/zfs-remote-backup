@@ -1,4 +1,6 @@
-FROM ubuntu:latest
+FROM ubuntu:24.04 AS base
+
+FROM base AS runner
 
 WORKDIR /app
 
