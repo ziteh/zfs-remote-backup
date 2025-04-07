@@ -13,3 +13,6 @@ wheels/
 *.key
 *.pem
 *.asc
+
+# Project
+.env.local

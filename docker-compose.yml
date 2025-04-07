@@ -3,8 +3,10 @@ services:
   zfs-remote-backup:
     build: .
     container_name: zfs_remote_backup
+    privileged: true # for ZFS
     volumes:
       - /mnt:/mnt
       - /dev:/dev
-    privileged: true # ZFS
+    env_file:
+      - .env.local
     # restart: always
