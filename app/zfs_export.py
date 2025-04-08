@@ -2,6 +2,15 @@ import subprocess
 
 SPLIT_SIZE = "4G"
 
+# ‘b’  =>            512 ("blocks")
+# ‘KB’ =>           1000 (KiloBytes)
+# ‘K’  =>           1024 (KibiBytes)
+# ‘MB’ =>      1000*1000 (MegaBytes)
+# ‘M’  =>      1024*1024 (MebiBytes)
+# ‘GB’ => 1000*1000*1000 (GigaBytes)
+# ‘G’  => 1024*1024*1024 (GibiBytes)
+# https://www.gnu.org/software/coreutils/manual/html_node/split-invocation.html
+
 
 def zfs_export(
     zfs_pool: str,
@@ -16,7 +25,14 @@ def zfs_export(
     if incr_snapshot_str:
         zfs_cmd.extend(["-i", incr_snapshot_str])
 
-    split_cmd = ["split", "-b", SPLIT_SIZE, "-", output_filename]
+    split_cmd = [
+        "split",
+        f"--bytes={SPLIT_SIZE}",
+        "--numeric-suffixes=0",
+        "--suffix-length=5",
+        "-",
+        output_filename,
+    ]
 
     zfs_proc = subprocess.Popen(zfs_cmd, stdout=subprocess.PIPE)
     split_proc = subprocess.Popen(split_cmd, stdin=zfs_proc.stdout)
