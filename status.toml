@@ -1,0 +1,18 @@
+[task]
+type = "full"
+target = 2025-04-01
+last_record = 2025-04-01T11:20:33
+
+[snapshot]
+pool = "gen_pool_1"
+base = "snap1"
+incr = ""
+split_quantity = 20
+
+[stage]
+exported = true
+compressed = 20
+compress_tested = 20
+encrypted = 20
+uploaded = 5
+removed = 0
