@@ -18,5 +18,10 @@
         "pyproject.toml",
         "requirements.txt",
         "uv.lock",
-    ]
+    ],
+    "python.testing.unittestEnabled": false,
+    "python.testing.pytestEnabled": true,
+    "python.testing.pytestArgs": [
+        "tests"
+    ],
 }

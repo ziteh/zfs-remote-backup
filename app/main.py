@@ -1,5 +1,5 @@
 from pathlib import Path
-from define import (
+from app.define import (
     WORK_DIR,
     STATUS_FILENAME,
     BackupStatus,
