@@ -1,6 +1,6 @@
 from datetime import datetime
 from app.define import BackupStatus, Stage, Snapshot, Task
-from app.main import check_stage
+from app.status import check_stage
 
 
 def test_check_stage_exported_false():
