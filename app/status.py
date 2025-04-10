@@ -1,64 +1,87 @@
+from dataclasses import asdict, dataclass
 from datetime import datetime
-from dataclasses import asdict
-from dacite import from_dict
-import dacite
-from tomlkit import dumps, parse
 from pathlib import Path
-from app.define import (
-    WORK_DIR,
-    STATUS_FILENAME,
-    ENCODING as ENC,
-    NEWLINE as NL,
-    BackupStatus,
-    BackupType,
-    Task,
-    Snapshot,
-    Stage,
-    BackupTaskStage,
-)
+from typing import Any, Literal
+
+import msgpack
+
+from app.define import STATUS_FILENAME, WORK_DIR, BackupType
+
+type BackupTaskStage = Literal[
+    "export",
+    "compress",
+    "compress_test",
+    "encrypt",
+    "upload",
+    "remove",
+    "done",
+    # "error",
+]
+
+
+@dataclass(slots=True)
+class Task:
+    date: datetime
+    type: BackupType
+    pool: str
+
+
+@dataclass(slots=True)
+class Stage:
+    exported: bool
+    compressed: int
+    compress_tested: int
+    encrypted: int
+    uploaded: int
+    removed: int
+
+
+@dataclass(slots=True)
+class CurrentTask:
+    base: str
+    incr: str
+    split_quantity: int
+    stage: Stage
+
+
+@dataclass(slots=True)
+class BackupStatus:
+    last_record: datetime
+    queue: list[Task]
+    current: CurrentTask
 
 
 def load_status() -> BackupStatus:
+    def decode(obj: dict[str, Any]):
+        if "__datetime__" in obj:
+            return datetime.fromisoformat(obj["value"])  # type: ignore
+        return obj
+
     status_file_path = Path(WORK_DIR) / STATUS_FILENAME
-    with open(status_file_path, "r", encoding=ENC, newline=NL) as f:
-        toml_data = parse(f.read())
-        print(toml_data)
-
-    def parse_datetime(value: str) -> datetime:
-        return datetime.fromisoformat(value)
-
-    return from_dict(
-        data_class=BackupStatus,
-        data=toml_data,
-        config=dacite.Config(type_hooks={datetime: parse_datetime}),
-    )
+    with open(status_file_path, "rb") as f:
+        data: dict[str, Any] = msgpack.load(f, object_hook=decode)
+        return BackupStatus(**data)
 
 
 def save_status(status: BackupStatus):
-    status.task.last_record = datetime.now()
+    def encode(obj: Any) -> dict[str, Any]:
+        if isinstance(obj, datetime):
+            return {"__datetime__": True, "value": obj.isoformat()}
+        raise TypeError(f"Type {type(obj)} not serializable")
+
+    status.last_record = datetime.now()
 
     status_file_path = Path(WORK_DIR) / STATUS_FILENAME
-    with open(status_file_path, "w", encoding=ENC, newline=NL) as f:
-        status_dict = asdict(status)
-        f.write(dumps(status_dict))
-
-
-def reset_new_status(
-    target: datetime, type: BackupType, pool: str, base: str, incr: str
-):
-    task = Task(type, target, target)
-    snapshot = Snapshot(pool, base, incr, -1)
-    stage = Stage(False, -1, -1, -1, -1, -1)
-    new_status = BackupStatus(task, snapshot, stage)
-    save_status(new_status)
+    with open(status_file_path, "wb") as f:
+        msgpack.dump(asdict(status), f, default=encode)  # type: ignore
 
 
 def check_stage(status: BackupStatus) -> tuple[BackupTaskStage, int, int]:
-    stage = status.stage
+    stage = status.current.stage
     if not stage.exported:
         return ("export", 0, 0)
 
-    split_qty = status.snapshot.split_quantity
+    split_qty = status.current.split_quantity
     if split_qty <= 0:
         return ("export", -1, split_qty)  # error
 
