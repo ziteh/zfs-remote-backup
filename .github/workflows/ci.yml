@@ -47,6 +47,7 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           push: ${{ env.ON_PUSH_TAGS }}
+          provenance: true
 
       - name: Generate artifact attestation
         if: ${{ env.ON_PUSH_TAGS }}
