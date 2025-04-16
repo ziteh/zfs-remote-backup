@@ -1,3 +1,4 @@
+import os
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
@@ -113,5 +114,17 @@ def check_stage(status: BackupStatus) -> tuple[BackupTaskStage, int, int]:
     return ("done", 0, split_qty)
 
 
-def is_error_stage(current: int, total: int):
+def is_error_stage(current: int, total: int) -> bool:
     return total <= 0 or current <= 0
+
+
+def is_nothing_to_do(status: BackupStatus) -> bool:
+    return len(status.queue) == 0
+
+
+def get_target_pools() -> list[str]:
+    pools_str = os.getenv("TARGET_POOLS")
+    if pools_str is None:
+        return []  # Environment variable not found
+
+    return pools_str.split(";")
