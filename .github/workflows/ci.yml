@@ -49,6 +49,7 @@ jobs:
           push: ${{ env.ON_PUSH_TAGS }}
 
       - name: Generate artifact attestation
+        if: ${{ env.ON_PUSH_TAGS }}
         uses: actions/attest-build-provenance@v2
         with:
           subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME}}
