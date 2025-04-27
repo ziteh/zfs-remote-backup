@@ -6,10 +6,6 @@ from app.status import (
     BackupStatus,
     BackupStatusRaw,
     Task,
-    check_stage,
-    is_error_stage,
-    load_status,
-    save_status,
 )
 from app.zfs import Zfs
 
