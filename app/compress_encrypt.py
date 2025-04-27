@@ -1,9 +1,8 @@
+import os
 import subprocess
 
 COMPRESSION_LEVEL = "-8"
 THREADS = "-T0"
-
-AGE_PUBLIC_KEY = "age..."
 
 
 def compress_encrypt(input_filename: str) -> str:
@@ -22,8 +21,12 @@ def compress_encrypt(input_filename: str) -> str:
 
     # age encrypt
     encrypted_filename = f"{compressed_filename}.age"
+    public_key = os.getenv("AGE_PUBLIC_KEY")
+    if public_key is None:
+        raise ValueError("AGE_PUBLIC_KEY environment variable is not set.")
+
     subprocess.run(
-        ["age", "-r", AGE_PUBLIC_KEY, "-o", encrypted_filename, compressed_filename],
+        ["age", "-r", public_key, "-o", encrypted_filename, compressed_filename],
         check=True,
     )
 

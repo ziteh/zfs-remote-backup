@@ -1,44 +1,35 @@
 from pathlib import Path
-from define import BackupType, ENCODING as ENC, NEWLINE as NL
+
+from define import ENCODING, LATEST_SNAPSHOT_FILENAME, NEWLINE, RECORD_DIR, BackupType
 
 
-RECORD_DIR = r"/app/record/"
+def read_latest(pool: str, type: BackupType) -> str:
+    full_path = __get_path(pool, type)
 
-LATEST_FULL_FILENAME = "latest_full.txt"
-LATEST_DIFF_FILENAME = "latest_diff.txt"
-LATEST_INCR_FILENAME = "latest_incr.txt"
-
-FILENAME_MAP: dict[BackupType, str] = {
-    "full": LATEST_FULL_FILENAME,
-    "diff": LATEST_DIFF_FILENAME,
-    "incr": LATEST_INCR_FILENAME,
-}
-
-
-def read_latest(type: BackupType) -> str:
-    full_path = __get_path(type)
-
-    with open(full_path, "r", encoding=ENC, newline=NL) as f:
+    with open(full_path, "r", encoding=ENCODING, newline=NEWLINE) as f:
         latest_snapshot = f.read()
 
     return latest_snapshot
 
 
-def update_latest(type: BackupType, new_snapshot: str) -> str:
-    full_path = __get_path(type)
+def update_latest(pool: str, type: BackupType, new_snapshot: str):
+    full_path = __get_path(pool, type)
 
-    with open(full_path, "w", encoding=ENC, newline=NL) as f:
+    with open(full_path, "w", encoding=ENCODING, newline=NEWLINE) as f:
         f.write(new_snapshot)
 
-    return new_snapshot
 
+def __get_path(pool: str, type: BackupType) -> Path:
+    """Get the full path for the latest backup file based on the pool and backup type.
 
-def __get_path(type: BackupType) -> Path:
-    filename = FILENAME_MAP.get(type)
-    if filename is None:
-        raise ValueError(f"Invalid backup type: {type}")
+    Args:
+        pool: The name of the ZFS pool for which the backup is being accessed.
+        type: The type of backup (full, diff, incr).
 
-    record_path = Path(RECORD_DIR)
-    full_path = record_path / filename
+    Returns:
+        The full path to the latest backup file.
+    """
 
+    filename = f"{type}_{LATEST_SNAPSHOT_FILENAME}"
+    full_path = Path(RECORD_DIR) / pool / filename
     return full_path

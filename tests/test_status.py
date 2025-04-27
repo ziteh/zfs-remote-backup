@@ -2,18 +2,18 @@ from datetime import datetime
 
 import pytest
 
-from app.status import BackupStatus, CurrentTask, Stage, check_stage, is_error_stage
+from app.status import BackupStatusRaw, CurrentTask, Stage, check_stage, is_error_stage
 
 
 class TestStage:
     @pytest.fixture
-    def default_status(self) -> BackupStatus:
-        return BackupStatus(
+    def default_status(self) -> BackupStatusRaw:
+        return BackupStatusRaw(
             last_record=datetime.now(),
             queue=[],
             current=CurrentTask(
                 base="base",
-                incr="incr",
+                ref="incr",
                 split_quantity=3,
                 stage=Stage(
                     exported=False,
@@ -26,7 +26,7 @@ class TestStage:
             ),
         )
 
-    def test_check_stage_export(self, default_status: BackupStatus):
+    def test_check_stage_export(self, default_status: BackupStatusRaw):
         """export stage"""
         default_status.current.stage = Stage(
             exported=False,
@@ -43,7 +43,7 @@ class TestStage:
         assert current == 0
         assert total == 0
 
-    def test_check_stage_compress(self, default_status: BackupStatus):
+    def test_check_stage_compress(self, default_status: BackupStatusRaw):
         """compress stage"""
         default_status.current.stage = Stage(
             exported=True,
@@ -60,7 +60,7 @@ class TestStage:
         assert current == default_status.current.stage.compressed
         assert total == default_status.current.split_quantity
 
-    def test_check_stage_compress_error(self, default_status: BackupStatus):
+    def test_check_stage_compress_error(self, default_status: BackupStatusRaw):
         """compress stage error"""
         default_status.current.stage = Stage(
             exported=True,
@@ -76,7 +76,7 @@ class TestStage:
         assert stage == "compress"
         assert is_error_stage(current, total) is True
 
-    def test_check_stage_compress_test(self, default_status: BackupStatus):
+    def test_check_stage_compress_test(self, default_status: BackupStatusRaw):
         """compress test stage"""
         default_status.current.stage = Stage(
             exported=True,
@@ -93,7 +93,7 @@ class TestStage:
         assert current == default_status.current.stage.compress_tested
         assert total == default_status.current.split_quantity
 
-    def test_check_stage_compress_test_error(self, default_status: BackupStatus):
+    def test_check_stage_compress_test_error(self, default_status: BackupStatusRaw):
         """compress test stage error"""
         default_status.current.stage = Stage(
             exported=True,
@@ -109,7 +109,7 @@ class TestStage:
         assert stage == "compress_test"
         assert is_error_stage(current, total) is True
 
-    def test_check_stage_encrypt(self, default_status: BackupStatus):
+    def test_check_stage_encrypt(self, default_status: BackupStatusRaw):
         """encrypt stage"""
         default_status.current.stage = Stage(
             exported=True,
@@ -126,7 +126,7 @@ class TestStage:
         assert current == default_status.current.stage.encrypted
         assert total == default_status.current.split_quantity
 
-    def test_check_stage_encrypt_error(self, default_status: BackupStatus):
+    def test_check_stage_encrypt_error(self, default_status: BackupStatusRaw):
         """encrypt stage error"""
         default_status.current.stage = Stage(
             exported=True,
@@ -142,7 +142,7 @@ class TestStage:
         assert stage == "encrypt"
         assert is_error_stage(current, total) is True
 
-    def test_check_stage_upload(self, default_status: BackupStatus):
+    def test_check_stage_upload(self, default_status: BackupStatusRaw):
         """upload stage"""
         default_status.current.stage = Stage(
             exported=True,
@@ -159,7 +159,7 @@ class TestStage:
         assert current == default_status.current.stage.uploaded
         assert total == default_status.current.split_quantity
 
-    def test_check_stage_upload_error(self, default_status: BackupStatus):
+    def test_check_stage_upload_error(self, default_status: BackupStatusRaw):
         """upload stage error"""
         default_status.current.stage = Stage(
             exported=True,
@@ -175,7 +175,7 @@ class TestStage:
         assert stage == "upload"
         assert is_error_stage(current, total) is True
 
-    def test_check_stage_remove(self, default_status: BackupStatus):
+    def test_check_stage_remove(self, default_status: BackupStatusRaw):
         """remove stage"""
         default_status.current.stage = Stage(
             exported=True,
@@ -192,7 +192,7 @@ class TestStage:
         assert current == default_status.current.stage.removed
         assert total == default_status.current.split_quantity
 
-    def test_check_stage_remove_error(self, default_status: BackupStatus):
+    def test_check_stage_remove_error(self, default_status: BackupStatusRaw):
         """remove stage error"""
         default_status.current.stage = Stage(
             exported=True,
@@ -208,7 +208,7 @@ class TestStage:
         assert stage == "remove"
         assert is_error_stage(current, total) is True
 
-    def test_check_stage_done(self, default_status: BackupStatus):
+    def test_check_stage_done(self, default_status: BackupStatusRaw):
         """all done"""
         default_status.current.stage = Stage(
             exported=True,
