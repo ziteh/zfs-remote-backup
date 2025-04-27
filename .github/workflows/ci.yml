@@ -49,7 +49,7 @@ jobs:
           push: ${{ env.ON_PUSH_TAGS }}
 
       - name: Generate artifact attestation
-        if: ${{ env.ON_PUSH_TAGS && steps.push.outputs.digest != '' }}
+        if: ${{ github.event_name == 'push' && env.ON_PUSH_TAGS == 'true' && steps.push.outputs.digest != '' }}
         uses: actions/attest-build-provenance@v2
         with:
           subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME}}
