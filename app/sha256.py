@@ -1,9 +1,10 @@
-import hashlib
-import base64
 import argparse
+import base64
+import hashlib
+from pathlib import Path
 
 
-def cal_sha256(file_path: str) -> bytes:
+def cal_sha256(file_path: str | Path) -> bytes:
     hash = hashlib.sha256()
     try:
         with open(file_path, "rb") as f:
@@ -11,8 +12,8 @@ def cal_sha256(file_path: str) -> bytes:
                 hash.update(byte_block)
 
         return hash.digest()
-    except FileNotFoundError:
-        raise FileNotFoundError()
+    except FileNotFoundError as e:
+        raise FileNotFoundError() from e
 
 
 def bytes_to_hex(data: bytes) -> str:

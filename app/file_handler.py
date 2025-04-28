@@ -3,7 +3,7 @@ from abc import ABCMeta, abstractmethod
 from pathlib import Path
 
 
-class FileManager(metaclass=ABCMeta):
+class FileHandler(metaclass=ABCMeta):
     @abstractmethod
     def delete(self, filename: str | Path) -> None:
         """Delete a file.
@@ -14,6 +14,8 @@ class FileManager(metaclass=ABCMeta):
         raise NotImplementedError()
 
 
-class OsFileManager(FileManager):
+class OsFileHandler(FileHandler):
+    """OS File System"""
+
     def delete(self, filename: str | Path) -> None:
         os.remove(filename)

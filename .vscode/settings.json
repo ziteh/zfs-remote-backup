@@ -24,4 +24,7 @@
     "python.testing.pytestArgs": [
         "tests"
     ],
+    "cSpell.words": [
+        "Encryptor"
+    ],
 }

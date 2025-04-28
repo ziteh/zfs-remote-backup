@@ -2,7 +2,7 @@ import subprocess
 from abc import ABCMeta, abstractmethod
 
 
-class CompressionManager(metaclass=ABCMeta):
+class CompressionHandler(metaclass=ABCMeta):
     @property
     @abstractmethod
     def extension(self) -> str:
@@ -33,7 +33,9 @@ class CompressionManager(metaclass=ABCMeta):
         raise NotImplementedError()
 
 
-class ZstdCompression(CompressionManager):
+class ZstdCompressor(CompressionHandler):
+    """Zstandard (Zstd) compression"""
+
     _comp_level: str = "-8"
     _threads: str = "-T0"
 
@@ -67,48 +69,3 @@ class ZstdCompression(CompressionManager):
             capture_output=True,
         )
         return result.returncode == 0
-
-
-class EncryptionManager(metaclass=ABCMeta):
-    @property
-    @abstractmethod
-    def extension(self) -> str:
-        raise NotImplementedError()
-
-    @abstractmethod
-    def encrypt(self, filename: str) -> str:
-        """Encrypts the given filename using the specified encryption method.
-
-        Args:
-            filename: The name of the file to encrypt.
-
-        Returns:
-            The name of the encrypted file.
-        """
-        raise NotImplementedError()
-
-
-class AgeEncryption(EncryptionManager):
-    _public_key: str
-
-    def __init__(self, public_key: str):
-        self._public_key = public_key
-
-    @property
-    def extension(self) -> str:
-        return ".age"
-
-    def encrypt(self, filename: str) -> str:
-        encrypted_filename = f"{filename}{self.extension}"
-        subprocess.run(
-            [
-                "age",
-                "-r",
-                self._public_key,
-                "-o",
-                encrypted_filename,
-                filename,
-            ],
-            check=True,
-        )
-        return encrypted_filename

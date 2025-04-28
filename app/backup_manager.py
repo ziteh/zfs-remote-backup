@@ -4,39 +4,40 @@ from pathlib import Path
 
 from loguru import logger
 
-from app.compress_encrypt import CompressionManager, EncryptionManager
+from app.compress_handler import CompressionHandler
 from app.define import TEMP_DIR, BackupType
-from app.file_manager import FileManager
+from app.encrypt_handler import EncryptionHandler
+from app.file_handler import FileHandler
+from app.remote_handler import RemoteStorageHandler
+from app.snapshot_handler import SnapshotHandler
 from app.status import BackupStatusIo, BackupStatusManager
-from app.upload import RemoteManager
-from app.zfs import SnapshotManager
 
 
 class BackupTaskManager:
     __status_mgr: BackupStatusManager
-    __snapshot_mgr: SnapshotManager
-    __remote_mgr: RemoteManager
-    __compress_mgr: CompressionManager
-    __encrypt_mgr: EncryptionManager
-    __file_mgr: FileManager
+    __snapshot_mgr: SnapshotHandler
+    __remote_mgr: RemoteStorageHandler
+    __compress_mgr: CompressionHandler
+    __encrypt_mgr: EncryptionHandler
+    __file_mgr: FileHandler
 
     bucket: str
 
     def __init__(
         self,
         status_io: BackupStatusIo,
-        snapshot_mgr: SnapshotManager,
-        remote_mgr: RemoteManager,
-        compress_mgr: CompressionManager,
-        encrypt_mgr: EncryptionManager,
-        file_mgr: FileManager,
+        snapshot_handler: SnapshotHandler,
+        remote_handler: RemoteStorageHandler,
+        compression_handler: CompressionHandler,
+        encryption_handler: EncryptionHandler,
+        file_handler: FileHandler,
     ):
         self.__status_mgr = BackupStatusManager(status_io)
-        self.__snapshot_mgr = snapshot_mgr
-        self.__remote_mgr = remote_mgr
-        self.__compress_mgr = compress_mgr
-        self.__encrypt_mgr = encrypt_mgr
-        self.__file_mgr = file_mgr
+        self.__snapshot_mgr = snapshot_handler
+        self.__remote_mgr = remote_handler
+        self.__compress_mgr = compression_handler
+        self.__encrypt_mgr = encryption_handler
+        self.__file_mgr = file_handler
 
         bucket = os.getenv("S3_BUCKET")
         if bucket is None:

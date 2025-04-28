@@ -5,7 +5,7 @@ from pathlib import Path
 from app.define import SPLIT_SIZE
 
 
-class SnapshotManager(metaclass=ABCMeta):
+class SnapshotHandler(metaclass=ABCMeta):
     @property
     @abstractmethod
     def filename(self) -> str:
@@ -32,8 +32,9 @@ class SnapshotManager(metaclass=ABCMeta):
         """
         raise NotImplementedError()
 
+    @staticmethod
     @abstractmethod
-    def list(self, pool: str) -> list[str]:
+    def list(pool: str) -> list[str]:
         """List all snapshots in the given ZFS pool.
 
         Args:
@@ -45,7 +46,7 @@ class SnapshotManager(metaclass=ABCMeta):
         raise NotImplementedError()
 
 
-class ZfsSnapshotManager(SnapshotManager):
+class ZfsSnapshotHandler(SnapshotHandler):
     @property
     def filename(self) -> str:
         return "snapshot_"
@@ -83,7 +84,8 @@ class ZfsSnapshotManager(SnapshotManager):
         split_files = list(output_path.glob(f"{self.filename}*"))
         return len(split_files)
 
-    def list(self, pool: str) -> list[str]:
+    @staticmethod
+    def list(pool: str) -> list[str]:
         cmd = ["zfs", "list", "-H", "-o", "name", "-t", "snapshot", pool]
         result = subprocess.run(cmd, capture_output=True, text=True)
         if result.returncode != 0:

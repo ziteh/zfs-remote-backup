@@ -9,7 +9,7 @@ import msgpack
 
 from app.define import BackupType
 from app.latest_snapshot import read_latest
-from app.zfs import Zfs
+from app.snapshot_handler import ZfsSnapshotHandler
 
 type BackupTaskStage = Literal[
     "export",
@@ -241,7 +241,7 @@ class BackupStatusManager:
         self.__status.current.stage.removed = 0
 
         # Set the snapshot
-        snapshots = Zfs.list_snapshots(task.pool)
+        snapshots = ZfsSnapshotHandler.list(task.pool)
         self.__status.current.base = snapshots[0]
 
         match task.type:

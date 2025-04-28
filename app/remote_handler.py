@@ -4,7 +4,7 @@ import boto3
 from sha256 import bytes_to_base64, cal_sha256
 
 
-class RemoteManager(metaclass=ABCMeta):
+class RemoteStorageHandler(metaclass=ABCMeta):
     @abstractmethod
     def upload(
         self,
@@ -14,10 +14,21 @@ class RemoteManager(metaclass=ABCMeta):
         tags: dict[str, str] | None,
         metadata: dict[str, str] | None,
     ) -> None:
+        """Uploads a file to the remote storage.
+
+        Args:
+            filename: The name of the file to upload.
+            bucket: The name of the remote bucket.
+            key: The key under which to store the file.
+            tags: Optional tags.
+            metadata: Optional metadata.
+        """
         raise NotImplementedError()
 
 
-class AwsS3(RemoteManager):
+class AwsS3Oss(RemoteStorageHandler):
+    """AWS S3 Object Storage Service"""
+
     def upload(
         self,
         filename: str,

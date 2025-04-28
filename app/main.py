@@ -4,14 +4,13 @@ from pathlib import Path
 from loguru import logger
 
 from app.backup_manager import BackupTaskManager
-from app.compress_encrypt import AgeEncryption, ZstdCompression
+from app.compress_handler import ZstdCompressor
 from app.define import STATUS_FILENAME, WORK_DIR
-from app.file_manager import OsFileManager
-from app.status import (
-    MsgpackBackupStatusIo,
-)
-from app.upload import AwsS3
-from app.zfs import ZfsSnapshotManager
+from app.encrypt_handler import AgeEncryptor
+from app.file_handler import OsFileHandler
+from app.remote_handler import AwsS3Oss
+from app.snapshot_handler import ZfsSnapshotHandler
+from app.status import MsgpackBackupStatusIo
 
 
 def main():
@@ -21,11 +20,11 @@ def main():
 
     status_file_path = Path(WORK_DIR) / STATUS_FILENAME
     status_io = MsgpackBackupStatusIo(status_file_path)
-    snapshot_mgr = ZfsSnapshotManager()
-    remote_mgr = AwsS3()
-    compress_mgr = ZstdCompression()
-    encrypt_mgr = AgeEncryption(public_key)
-    file_mgr = OsFileManager()
+    snapshot_mgr = ZfsSnapshotHandler()
+    remote_mgr = AwsS3Oss()
+    compress_mgr = ZstdCompressor()
+    encrypt_mgr = AgeEncryptor(public_key)
+    file_mgr = OsFileHandler()
 
     backup_task_manager = BackupTaskManager(
         status_io,
