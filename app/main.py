@@ -1,143 +1,43 @@
+import os
+from pathlib import Path
+
 from loguru import logger
 
-from app.define import EXPORT_FILENAME
-from app.latest_snapshot import read_latest
+from app.backup_manager import BackupTaskManager
+from app.compress_encrypt import AgeEncryption, ZstdCompression
+from app.define import STATUS_FILENAME, WORK_DIR
+from app.file_manager import OsFileManager
 from app.status import (
-    BackupStatus,
-    BackupStatusRaw,
-    Task,
+    MsgpackBackupStatusIo,
 )
-from app.zfs import Zfs
+from app.upload import AwsS3
+from app.zfs import ZfsSnapshotManager
 
 
 def main():
-    status = BackupStatus()
+    public_key = os.getenv("AGE_PUBLIC_KEY")
+    if public_key is None:
+        raise ValueError("AGE_PUBLIC_KEY environment variable is not set")
 
-    while status.task is not None:
-        run_current_task(status)
+    status_file_path = Path(WORK_DIR) / STATUS_FILENAME
+    status_io = MsgpackBackupStatusIo(status_file_path)
+    snapshot_mgr = ZfsSnapshotManager()
+    remote_mgr = AwsS3()
+    compress_mgr = ZstdCompression()
+    encrypt_mgr = AgeEncryption(public_key)
+    file_mgr = OsFileManager()
 
-    logger.info("No backup tasks in queue")
+    backup_task_manager = BackupTaskManager(
+        status_io,
+        snapshot_mgr,
+        remote_mgr,
+        compress_mgr,
+        encrypt_mgr,
+        file_mgr,
+    )
 
-
-def run_current_task(status: BackupStatus):
-    (stage, current, total) = status.get_stage()
-
-    if BackupStatus.is_error_stage(current, total):
-        logger.error(f"Error in stage: {stage}, current: {current}, total: {total}")
-        return
-
-    match stage:
-        case "export":
-            handle_export(status)
-            pass
-
-        case "compress":
-            pass
-
-        case "compress_test":
-            pass
-
-        case "encrypt":
-            pass
-
-        case "upload":
-            pass
-
-        case "remove":
-            pass
-
-        case "done":
-            # dequeue_backup_task(status)
-            # save_status(status)
-            return
-
-        case _:
-            msg = f"Unknown stage {stage}"
-            logger.critical(msg)
-            raise ValueError(msg)
-
-
-def handle_export(status: BackupStatus):
-    base = status.base_snapshot
-    ref = status.ref_snapshot
-    type = status.backup_type
-    pool = status.pool
-    date = status.date
-
-    if not base:
-        raise ValueError()
-
-    if type != "full" and not ref:
-        raise ValueError()
-
-    if pool is None or type is None or date is None:
-        raise ValueError()
-
-    filename = EXPORT_FILENAME(pool, type, date)
-    num_parts = Zfs.export_snapshot(pool, base, ref, filename)
-    status.set_stage_export(num_parts)
-
-
-def enqueue_backup_task(status: BackupStatusRaw, task: Task) -> int:
-    status.queue.append(task)
-    # save_status(status)
-    logger.info(f"Task {task} added to queue")
-    return len(status.queue)
-
-
-def dequeue_backup_task(status: BackupStatusRaw) -> int:
-    if len(status.queue) == 0:
-        logger.warning("No tasks in queue to remove")
-        return 0
-
-    task = status.queue.pop(0)
-    load_backup_task(status)
-    # save_status(status)
-    logger.info(f"Task {task} removed from queue")
-    return len(status.queue)
-
-
-def load_backup_task(status: BackupStatusRaw) -> Task | None:
-    if len(status.queue) == 0:
-        logger.warning("No tasks in queue to load")
-        return None
-
-    task = status.queue[0]
-    logger.info(f"Task {task} loaded from queue")
-
-    # Clear the task status
-    status.current.split_quantity = 0
-    status.current.stage.exported = False
-    status.current.stage.compressed = 0
-    status.current.stage.compress_tested = 0
-    status.current.stage.encrypted = 0
-    status.current.stage.uploaded = 0
-    status.current.stage.removed = 0
-
-    # Set the snapshot
-    snapshots = Zfs.list_snapshots(task.pool)
-    status.current.base = snapshots[0]
-
-    match task.type:
-        case "full":
-            # Full backup, no reference snapshot
-            status.current.ref = ""
-
-        case "diff":
-            # Differential backup, use the latest full snapshot as reference
-            status.current.ref = read_latest(task.pool, "full")
-
-        case "incr":
-            # Incremental backup, use the latest differential snapshot as reference
-            status.current.ref = read_latest(task.pool, "diff")
-
-        case _:
-            msg = f"Unknown backup type: {task.type}"
-            logger.critical(msg)
-            raise ValueError(msg)
-
-    # save_status(status)
-    return task
+    backup_task_manager.run()
+    logger.info("Backup task completed successfully.")
 
 
 if __name__ == "__main__":

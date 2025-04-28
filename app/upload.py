@@ -4,7 +4,7 @@ import boto3
 from sha256 import bytes_to_base64, cal_sha256
 
 
-class RemoteInterface(metaclass=ABCMeta):
+class RemoteManager(metaclass=ABCMeta):
     @abstractmethod
     def upload(
         self,
@@ -17,7 +17,7 @@ class RemoteInterface(metaclass=ABCMeta):
         raise NotImplementedError()
 
 
-class AwsS3(RemoteInterface):
+class AwsS3(RemoteManager):
     def upload(
         self,
         filename: str,

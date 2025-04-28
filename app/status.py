@@ -1,4 +1,5 @@
 import os
+from abc import ABCMeta, abstractmethod
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
@@ -6,7 +7,7 @@ from typing import Any, Literal
 
 import msgpack
 
-from app.define import STATUS_FILENAME, WORK_DIR, BackupType
+from app.define import BackupType
 from app.latest_snapshot import read_latest
 from app.zfs import Zfs
 
@@ -82,62 +83,97 @@ class BackupStatusRaw:
     """Current backup task"""
 
 
-class BackupStatus:
-    _status: BackupStatusRaw
+class BackupStatusIo(metaclass=ABCMeta):
+    @abstractmethod
+    def load(self) -> BackupStatusRaw:
+        raise NotImplementedError()
 
-    def __init__(self) -> None:
-        self._open()
+    @abstractmethod
+    def save(self, status: BackupStatusRaw) -> None:
+        raise NotImplementedError()
+
+
+class MsgpackBackupStatusIo(BackupStatusIo):
+    __file_path: Path
+
+    def __init__(self, file_path: Path) -> None:
+        self.__file_path = file_path
+
+    def load(self) -> BackupStatusRaw:
+        if not self.__file_path.exists():
+            # File not exists, create a new status
+            status = BackupStatusRaw(
+                datetime.now(), [], CurrentTask("", "", 0, Stage(False, 0, 0, 0, 0, 0))
+            )
+            self.save(status)
+            return status
+
+        with open(self.__file_path, "rb") as f:
+            data: dict[str, Any] = msgpack.load(f, object_hook=self.__decode)
+            status = BackupStatusRaw(**data)
+            return status
+
+    def save(self, status: BackupStatusRaw) -> None:
+        status.last_record = datetime.now()
+
+        with open(self.__file_path, "wb") as f:
+            msgpack.dump(asdict(status), f, default=self.__encode)  # type: ignore
+
+    def __decode(self, obj: dict[str, Any]):
+        if "__datetime__" in obj:
+            return datetime.fromisoformat(obj["value"])  # type: ignore
+
+        return obj
+
+    def __encode(self, obj: Any) -> dict[str, Any]:
+        if isinstance(obj, datetime):
+            return {"__datetime__": True, "value": obj.isoformat()}
+
+        raise TypeError(f"Type {type(obj)} not serializable")
+
+
+class BackupStatusManager:
+    __status: BackupStatusRaw
+    __status_manager: BackupStatusIo
+
+    def __init__(self, manager: BackupStatusIo) -> None:
+        self.__status_manager = manager
+        self.__status = manager.load()
 
     @property
-    def task(self) -> Task | None:
-        if len(self._status.queue) == 0:
-            return None
-
-        return self._status.queue[0]
+    def is_no_task(self) -> bool:
+        return len(self.__status.queue) == 0
 
     @property
-    def backup_type(self) -> BackupType | None:
-        task = self.task
-        if task is None:
-            return None
-
-        return task.type
+    def pool(self) -> str:
+        return self.__status.queue[0].pool
 
     @property
-    def pool(self) -> str | None:
-        task = self.task
-        if task is None:
-            return None
-
-        return task.pool
+    def target_date(self) -> datetime:
+        return self.__status.queue[0].date
 
     @property
-    def date(self) -> datetime | None:
-        task = self.task
-        if task is None:
-            return None
-
-        return task.date
+    def backup_type(self) -> BackupType:
+        return self.__status.queue[0].type
 
     @property
     def base_snapshot(self) -> str:
-        task = self.task
-        if task is None:
-            return ""
-
-        return self._status.current.base
+        return self.__status.current.base
 
     @property
     def ref_snapshot(self) -> str:
-        task = self.task
-        if task is None or self.backup_type != "full":
-            return ""
+        return self.__status.current.ref
 
-        return self._status.current.ref
+    @property
+    def split(self) -> int:
+        return self.__status.current.split_quantity
 
     @staticmethod
     def is_error_stage(current: int, total: int) -> bool:
         return total <= 0 or current <= 0
+
+    def __save(self) -> None:
+        self.__status_manager.save(self.__status)
 
     def set_stage_export(self, parts: int | None):
         """Sets the export stage of the backup status.
@@ -147,63 +183,79 @@ class BackupStatus:
         """
 
         if parts is None:
-            self._status.current.stage.exported = False
-            self._status.current.split_quantity = 0
+            self.__status.current.stage.exported = False
+            self.__status.current.split_quantity = 0
         else:
-            self._status.current.stage.exported = True
-            self._status.current.split_quantity = parts
+            self.__status.current.stage.exported = True
+            self.__status.current.split_quantity = parts
 
-        self._save()
+        self.__save()
 
     def set_stage_compress(self, done: int):
-        self._status.current.stage.compressed = done
-        self._save()
+        self.__status.current.stage.compressed = done
+        self.__save()
 
-    def enqueue_back_task(self, task: Task) -> int:
-        self._status.queue.append(task)
-        self._save()
-        return len(self._status.queue)
+    def set_stage_compress_test(self, done: int):
+        self.__status.current.stage.compress_tested = done
+        self.__save()
 
-    def dequeue_back_task(self) -> int:
-        if len(self._status.queue) == 0:
+    def set_stage_encrypt(self, done: int):
+        self.__status.current.stage.encrypted = done
+        self.__save()
+
+    def set_stage_upload(self, done: int):
+        self.__status.current.stage.uploaded = done
+        self.__save()
+
+    def set_stage_remove(self, done: int):
+        self.__status.current.stage.removed = done
+        self.__save()
+
+    def enqueue_backup_task(self, task: Task) -> int:
+        self.__status.queue.append(task)
+        self.__save()
+        return len(self.__status.queue)
+
+    def dequeue_backup_task(self) -> int:
+        if len(self.__status.queue) == 0:
             return 0
 
-        _task = self._status.queue.pop(0)
+        _task = self.__status.queue.pop(0)
         self.load_backup_task()
-        self._save()
-        return len(self._status.queue)
+        self.__save()
+        return len(self.__status.queue)
 
     def load_backup_task(self) -> Task | None:
-        if len(self._status.queue) == 0:
+        if len(self.__status.queue) == 0:
             return None
 
-        task = self._status.queue[0]
+        task = self.__status.queue[0]
 
         # Clear the task status
-        self._status.current.split_quantity = 0
-        self._status.current.stage.exported = False
-        self._status.current.stage.compressed = 0
-        self._status.current.stage.compress_tested = 0
-        self._status.current.stage.encrypted = 0
-        self._status.current.stage.uploaded = 0
-        self._status.current.stage.removed = 0
+        self.__status.current.split_quantity = 0
+        self.__status.current.stage.exported = False
+        self.__status.current.stage.compressed = 0
+        self.__status.current.stage.compress_tested = 0
+        self.__status.current.stage.encrypted = 0
+        self.__status.current.stage.uploaded = 0
+        self.__status.current.stage.removed = 0
 
         # Set the snapshot
         snapshots = Zfs.list_snapshots(task.pool)
-        self._status.current.base = snapshots[0]
+        self.__status.current.base = snapshots[0]
 
         match task.type:
             case "full":
                 # Full backup, no reference snapshot
-                self._status.current.ref = ""
+                self.__status.current.ref = ""
 
             case "diff":
                 # Differential backup, use the latest full snapshot as reference
-                self._status.current.ref = read_latest(task.pool, "full")
+                self.__status.current.ref = read_latest(task.pool, "full")
 
             case "incr":
                 # Incremental backup, use the latest differential snapshot as reference
-                self._status.current.ref = read_latest(task.pool, "diff")
+                self.__status.current.ref = read_latest(task.pool, "diff")
 
             case _:
                 msg = f"Unknown backup type: {task.type}"
@@ -211,45 +263,12 @@ class BackupStatus:
 
         return task
 
-    def _open(self) -> None:
-        def decode(obj: dict[str, Any]):
-            if "__datetime__" in obj:
-                return datetime.fromisoformat(obj["value"])  # type: ignore
-            return obj
-
-        status_file_path = Path(WORK_DIR) / STATUS_FILENAME
-
-        if not status_file_path.exists():
-            # File not exists
-            status = BackupStatusRaw(
-                datetime.now(), [], CurrentTask("", "", 0, Stage(False, 0, 0, 0, 0, 0))
-            )
-            self._status = status
-            self._save()
-
-        with open(status_file_path, "rb") as f:
-            data: dict[str, Any] = msgpack.load(f, object_hook=decode)
-            status = BackupStatusRaw(**data)
-            self._status = status
-
-    def _save(self) -> None:
-        def encode(obj: Any) -> dict[str, Any]:
-            if isinstance(obj, datetime):
-                return {"__datetime__": True, "value": obj.isoformat()}
-            raise TypeError(f"Type {type(obj)} not serializable")
-
-        self._status.last_record = datetime.now()
-
-        status_file_path = Path(WORK_DIR) / STATUS_FILENAME
-        with open(status_file_path, "wb") as f:
-            msgpack.dump(asdict(self._status), f, default=encode)  # type: ignore
-
     def get_stage(self) -> tuple[BackupTaskStage, int, int]:
-        stage = self._status.current.stage
+        stage = self.__status.current.stage
         if not stage.exported:
             return ("export", 0, 0)
 
-        split_qty = self._status.current.split_quantity
+        split_qty = self.__status.current.split_quantity
         if split_qty <= 0:
             return ("export", -1, split_qty)  # error
 

@@ -2,7 +2,12 @@ import subprocess
 from abc import ABCMeta, abstractmethod
 
 
-class CompressionInterface(metaclass=ABCMeta):
+class CompressionManager(metaclass=ABCMeta):
+    @property
+    @abstractmethod
+    def extension(self) -> str:
+        raise NotImplementedError()
+
     @abstractmethod
     def compress(self, filename: str) -> str:
         """Compresses the given filename using the specified compression method.
@@ -16,7 +21,7 @@ class CompressionInterface(metaclass=ABCMeta):
         raise NotImplementedError()
 
     @abstractmethod
-    def test(self, filename: str) -> bool:
+    def verify(self, filename: str) -> bool:
         """Tests the integrity of the compressed file.
 
         Args:
@@ -28,7 +33,7 @@ class CompressionInterface(metaclass=ABCMeta):
         raise NotImplementedError()
 
 
-class ZstdCompression(CompressionInterface):
+class ZstdCompression(CompressionManager):
     _comp_level: str = "-8"
     _threads: str = "-T0"
 
@@ -36,8 +41,12 @@ class ZstdCompression(CompressionInterface):
         self._comp_level = comp_level
         self._threads = threads
 
+    @property
+    def extension(self) -> str:
+        return ".zst"
+
     def compress(self, filename: str) -> str:
-        compressed_filename = f"{filename}.zst"
+        compressed_filename = f"{filename}{self.extension}"
         subprocess.run(
             [
                 "zstd",
@@ -51,7 +60,7 @@ class ZstdCompression(CompressionInterface):
         )
         return compressed_filename
 
-    def test(self, filename: str) -> bool:
+    def verify(self, filename: str) -> bool:
         result = subprocess.run(
             ["zstd", "--test", filename],
             check=False,
@@ -60,7 +69,12 @@ class ZstdCompression(CompressionInterface):
         return result.returncode == 0
 
 
-class EncryptionInterface(metaclass=ABCMeta):
+class EncryptionManager(metaclass=ABCMeta):
+    @property
+    @abstractmethod
+    def extension(self) -> str:
+        raise NotImplementedError()
+
     @abstractmethod
     def encrypt(self, filename: str) -> str:
         """Encrypts the given filename using the specified encryption method.
@@ -74,14 +88,18 @@ class EncryptionInterface(metaclass=ABCMeta):
         raise NotImplementedError()
 
 
-class AgeEncryption(EncryptionInterface):
+class AgeEncryption(EncryptionManager):
     _public_key: str
 
     def __init__(self, public_key: str):
         self._public_key = public_key
 
+    @property
+    def extension(self) -> str:
+        return ".age"
+
     def encrypt(self, filename: str) -> str:
-        encrypted_filename = f"{filename}.age"
+        encrypted_filename = f"{filename}{self.extension}"
         subprocess.run(
             [
                 "age",
