@@ -183,6 +183,7 @@ class BackupStatusManager:
         self._snapshot_handler = snapshot_handler
         self.__status_manager = manager
         self.__status = manager.load()
+        self.load_backup_task()
 
     @property
     def is_no_task(self) -> bool:
@@ -214,7 +215,7 @@ class BackupStatusManager:
 
     @staticmethod
     def is_error_stage(current: int, total: int) -> bool:
-        return total <= 0 or current <= 0
+        return total < 0 or current < 0
 
     def __save(self) -> None:
         self.__status_manager.save(self.__status)

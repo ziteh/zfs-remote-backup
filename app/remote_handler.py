@@ -2,8 +2,9 @@ from abc import ABCMeta, abstractmethod
 from typing import Any
 
 import boto3
+
 from app.file_handler import MockFileSystem
-from sha256 import bytes_to_base64, cal_sha256
+from app.sha256 import bytes_to_base64, cal_sha256
 
 
 class RemoteStorageHandler(metaclass=ABCMeta):

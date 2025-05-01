@@ -49,3 +49,6 @@ class MockFileSystem(FileHandler):
 
     def clear(self) -> None:
         self.file_system.clear()
+
+    def print(self) -> None:
+        print(self.file_system)

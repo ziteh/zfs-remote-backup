@@ -1,4 +1,3 @@
-import os
 from datetime import datetime
 from pathlib import Path
 
@@ -25,6 +24,7 @@ class BackupTaskManager:
 
     def __init__(
         self,
+        bucket: str,
         status_io: BackupStatusIo,
         snapshot_handler: SnapshotHandler,
         remote_handler: RemoteStorageHandler,
@@ -39,9 +39,9 @@ class BackupTaskManager:
         self.__encrypt_mgr = encryption_handler
         self.__file_mgr = file_handler
 
-        bucket = os.getenv("S3_BUCKET")
-        if bucket is None:
-            raise ValueError("S3_BUCKET environment variable is not set")
+        # bucket = os.getenv("S3_BUCKET")
+        # if bucket is None:
+        #     raise ValueError("S3_BUCKET environment variable is not set")
         self.bucket = bucket
 
     @property
