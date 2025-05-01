@@ -1,6 +1,8 @@
 import subprocess
 from abc import ABCMeta, abstractmethod
 
+from app.file_handler import MockFileSystem
+
 
 class EncryptionHandler(metaclass=ABCMeta):
     @property
@@ -47,3 +49,21 @@ class AgeEncryptor(EncryptionHandler):
             check=True,
         )
         return encrypted_filename
+
+
+class MockEncryptor(EncryptionHandler):
+    def __init__(self, file_system: MockFileSystem, extension: str = ".cry") -> None:
+        self._file_system = file_system
+        self._extension = extension
+
+    @property
+    def extension(self) -> str:
+        return self._extension
+
+    def encrypt(self, filename: str) -> str:
+        if not self._file_system.check(filename):
+            raise FileNotFoundError(f"File '{filename}' not found.")
+
+        new_filename = f"{filename}{self.extension}"
+        self._file_system.save(new_filename, self._file_system.read(filename))
+        return new_filename

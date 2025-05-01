@@ -8,8 +8,9 @@ from typing import Any, Literal
 import msgpack
 
 from app.define import BackupType
+from app.file_handler import MockFileSystem
 from app.latest_snapshot import read_latest
-from app.snapshot_handler import ZfsSnapshotHandler
+from app.snapshot_handler import SnapshotHandler
 
 type BackupTaskStage = Literal[
     "export",
@@ -132,11 +133,54 @@ class MsgpackBackupStatusIo(BackupStatusIo):
         raise TypeError(f"Type {type(obj)} not serializable")
 
 
+class MockBackupStatusIo(BackupStatusIo):
+    _file_system: MockFileSystem
+    _filename: str
+    status: BackupStatusRaw
+    saved: list[BackupStatusRaw]
+
+    def __init__(
+        self,
+        file_system: MockFileSystem,
+        filename: str,
+        init_status: BackupStatusRaw | None = None,
+    ) -> None:
+        if init_status is None:
+            init_status = BackupStatusRaw(
+                last_record=datetime.now(),
+                queue=[],
+                current=CurrentTask(
+                    base="__base",
+                    ref="__ref",
+                    split_quantity=0,
+                    stage=Stage(
+                        exported=False,
+                        compressed=0,
+                        compress_tested=0,
+                        encrypted=0,
+                        uploaded=0,
+                        removed=0,
+                    ),
+                ),
+            )
+
+        self._filename = filename
+        self._file_system = file_system
+        self.save(init_status)
+
+    def load(self) -> BackupStatusRaw:
+        return self._file_system.read(self._filename)
+
+    def save(self, status: BackupStatusRaw) -> None:
+        self._file_system.save(self._filename, status)
+
+
 class BackupStatusManager:
     __status: BackupStatusRaw
     __status_manager: BackupStatusIo
 
-    def __init__(self, manager: BackupStatusIo) -> None:
+    def __init__(self, manager: BackupStatusIo, snapshot_handler: SnapshotHandler) -> None:
+        self._snapshot_handler = snapshot_handler
         self.__status_manager = manager
         self.__status = manager.load()
 
@@ -241,7 +285,7 @@ class BackupStatusManager:
         self.__status.current.stage.removed = 0
 
         # Set the snapshot
-        snapshots = ZfsSnapshotHandler.list(task.pool)
+        snapshots = self._snapshot_handler.list(task.pool)
         self.__status.current.base = snapshots[0]
 
         match task.type:

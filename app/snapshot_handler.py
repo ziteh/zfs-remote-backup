@@ -1,8 +1,9 @@
-from abc import ABCMeta, abstractmethod
 import subprocess
+from abc import ABCMeta, abstractmethod
 from pathlib import Path
 
 from app.define import SPLIT_SIZE
+from app.file_handler import MockFileSystem
 
 
 class SnapshotHandler(metaclass=ABCMeta):
@@ -32,9 +33,8 @@ class SnapshotHandler(metaclass=ABCMeta):
         """
         raise NotImplementedError()
 
-    @staticmethod
     @abstractmethod
-    def list(pool: str) -> list[str]:
+    def list(self, pool: str) -> list[str]:
         """List all snapshots in the given ZFS pool.
 
         Args:
@@ -84,8 +84,7 @@ class ZfsSnapshotHandler(SnapshotHandler):
         split_files = list(output_path.glob(f"{self.filename}*"))
         return len(split_files)
 
-    @staticmethod
-    def list(pool: str) -> list[str]:
+    def list(self, pool: str) -> list[str]:
         cmd = ["zfs", "list", "-H", "-o", "name", "-t", "snapshot", pool]
         result = subprocess.run(cmd, capture_output=True, text=True)
         if result.returncode != 0:
@@ -94,3 +93,39 @@ class ZfsSnapshotHandler(SnapshotHandler):
         snapshots = result.stdout.splitlines()
         snapshots.reverse()
         return snapshots
+
+
+class MockSnapshotHandler(SnapshotHandler):
+    def __init__(
+        self,
+        file_system: MockFileSystem,
+        export_return: int = 3,
+        filename: str = "mock_snapshot_",
+    ) -> None:
+        self._filename = filename
+        self._file_system = file_system
+        self.export_return = export_return
+        self.snapshots: list[str] = []
+        self.export_calls: list[dict[str, str]] = []  # keep track of calls for test assertions
+
+    @property
+    def filename(self) -> str:
+        return self._filename
+
+    def export(
+        self,
+        pool: str,
+        base_snapshot: str,
+        ref_snapshot: str | None,
+        output_dir: str,
+    ) -> int:
+        output_path = Path(output_dir)
+        for i in range(self.export_return):
+            filename = f"{self._filename}{i:06}"
+            content = f"{pool}\n{base_snapshot}\n{ref_snapshot}\n{i}"
+            self._file_system.save(output_path / filename, content)
+
+        return self.export_return
+
+    def list(self, pool: str) -> list[str]:
+        return [f"{pool}@{s}" for s in self.snapshots]

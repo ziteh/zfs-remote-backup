@@ -1,6 +1,8 @@
 from abc import ABCMeta, abstractmethod
+from typing import Any
 
 import boto3
+from app.file_handler import MockFileSystem
 from sha256 import bytes_to_base64, cal_sha256
 
 
@@ -24,6 +26,30 @@ class RemoteStorageHandler(metaclass=ABCMeta):
             metadata: Optional metadata.
         """
         raise NotImplementedError()
+
+
+class MockRemoteStorageHandler(RemoteStorageHandler):
+    def __init__(self, file_system: MockFileSystem):
+        self.objects: dict[str, Any] = {}
+        self._file_system = file_system
+
+    def upload(
+        self,
+        filename: str,
+        bucket: str,
+        key: str,
+        tags: dict[str, str] | None,
+        metadata: dict[str, str] | None,
+    ) -> None:
+        if not self._file_system.check(filename):
+            raise FileNotFoundError(f"File '{filename}' not found.")
+
+        target = f"{bucket}/{key}"
+        self.objects[target] = {
+            "content": self._file_system.read(filename),
+            "tags": tags,
+            "metadata": metadata,
+        }
 
 
 class AwsS3Oss(RemoteStorageHandler):

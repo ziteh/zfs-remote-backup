@@ -1,6 +1,8 @@
 import subprocess
 from abc import ABCMeta, abstractmethod
 
+from app.file_handler import MockFileSystem
+
 
 class CompressionHandler(metaclass=ABCMeta):
     @property
@@ -69,3 +71,24 @@ class ZstdCompressor(CompressionHandler):
             capture_output=True,
         )
         return result.returncode == 0
+
+
+class MockCompressionHandler(CompressionHandler):
+    def __init__(self, file_system: MockFileSystem, extension: str = ".cmp"):
+        self._file_system = file_system
+        self._extension = extension
+
+    @property
+    def extension(self) -> str:
+        return self._extension
+
+    def compress(self, filename: str) -> str:
+        if not self._file_system.check(filename):
+            raise FileNotFoundError(f"File '{filename}' not found.")
+
+        new_filename = f"{filename}{self.extension}"
+        self._file_system.save(new_filename, self._file_system.read(filename))
+        return new_filename
+
+    def verify(self, filename: str) -> bool:
+        return self._file_system.check(filename)  # just check file exist

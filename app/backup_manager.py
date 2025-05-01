@@ -32,7 +32,7 @@ class BackupTaskManager:
         encryption_handler: EncryptionHandler,
         file_handler: FileHandler,
     ):
-        self.__status_mgr = BackupStatusManager(status_io)
+        self.__status_mgr = BackupStatusManager(status_io, snapshot_handler)
         self.__snapshot_mgr = snapshot_handler
         self.__remote_mgr = remote_handler
         self.__compress_mgr = compression_handler
