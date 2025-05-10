@@ -107,7 +107,7 @@ class BackupTaskManager:
                     self.__handle_compress(current)
 
                 case "encrypt":
-                    pass
+                    self.__handle_encrypt(current)
 
                 case "upload":
                     self.__handle_update(current)
@@ -143,8 +143,13 @@ class BackupTaskManager:
 
         if not self.__compress_mgr.verify(compressed_filename):
             raise RuntimeError(f"Compression failed for {compressed_filename}")
+
         self.__file_mgr.delete(str(filename))  # delete the original file
         self.__set_stage_compress(index + 1)
+
+    def __handle_encrypt(self, index: int):
+        filename = self.temp_path / f"{self.__snapshot_mgr.filename}{index:06}"
+        compressed_filename = str(filename) + self.__compress_mgr.extension
 
         _encrypted_filename = self.__encrypt_mgr.encrypt(compressed_filename)
         self.__file_mgr.delete(str(compressed_filename))  # delete the compressed file

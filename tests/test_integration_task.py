@@ -127,15 +127,23 @@ class TestIntegration:
         ]
         assert len(exported_files) == split_count
 
-        # compress and encrypt
+        # compress
         for _ in range(split_count):
             backup_mgr.run(False)
         compressed_files = [
+            f for f in file_system.file_system if compressor.extension in f
+        ]
+        assert len(compressed_files) == split_count
+
+        # encrypt
+        for _ in range(split_count):
+            backup_mgr.run(False)
+        encrypted_files = [
             f
             for f in file_system.file_system
             if (compressor.extension + encryptor.extension) in f
         ]
-        assert len(compressed_files) == split_count
+        assert len(encrypted_files) == split_count
 
         # upload
         for _ in range(split_count):
