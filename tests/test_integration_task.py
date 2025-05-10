@@ -1,20 +1,65 @@
 from datetime import datetime
+from typing import Any
+
+import pytest
 
 from app.backup_manager import BackupTaskManager
-from app.compress_handler import MockCompressionHandler
-from app.encrypt_handler import MockEncryptor
+from app.compress_handler import CompressionHandler, MockCompressionHandler
+from app.define import BackupType
+from app.encrypt_handler import EncryptionHandler, MockEncryptor
 from app.file_handler import MockFileSystem
-from app.remote_handler import MockRemoteStorageHandler
-from app.snapshot_handler import MockSnapshotHandler
+from app.remote_handler import MockRemoteStorageHandler, RemoteStorageHandler
+from app.snapshot_handler import MockSnapshotHandler, SnapshotHandler
 from app.status import BackupStatusRaw, CurrentTask, MockBackupStatusIo, Stage, Task
 
 
 class TestIntegration:
-    def test_full_normal(self):
-        task0 = Task(datetime.now(), "full", "pool1")
+    @pytest.fixture
+    def split_count(self) -> int:
+        return 5
+
+    @pytest.fixture
+    def snapshots(self) -> list[str]:
+        number = 6
+        return [f"snapshot_{i}" for i in range(number, 0, -1)]
+
+    @pytest.fixture
+    def status_filename(self) -> str:
+        return "status.txt"
+
+    @pytest.fixture
+    def base_setup(
+        self,
+        status_filename: str,
+        snapshots: list[str],
+        split_count: int,
+    ) -> dict[str, Any]:
+        file_system = MockFileSystem()
+        compressor = MockCompressionHandler(file_system, False)
+        encryptor = MockEncryptor(file_system, False)
+        remote = MockRemoteStorageHandler("test_bucket", file_system, False)
+        snapshot_handler = MockSnapshotHandler(
+            file_system, False, snapshots, split_count
+        )
+
+        return {
+            "file_system": file_system,
+            "compressor": compressor,
+            "encryptor": encryptor,
+            "remote": remote,
+            "snapshot_handler": snapshot_handler,
+            "status_filename": status_filename,
+            "snapshots": snapshots,
+            "split_count": split_count,
+        }
+
+    def create_status(
+        self, task_type: BackupType, pool: str
+    ) -> tuple[BackupStatusRaw, Task]:
+        task = Task(datetime.now(), task_type, pool)
         status = BackupStatusRaw(
             last_record=datetime.now(),
-            queue=[task0],
+            queue=[task],
             current=CurrentTask(
                 base="",
                 ref="",
@@ -29,38 +74,61 @@ class TestIntegration:
                 ),
             ),
         )
-        status_filename = "status.txt"
-        snapshots = [f"snapshot_{i}" for i in range(5, 0, -1)]
-        split_count = 5
+        return (status, task)
 
-        file_system = MockFileSystem()
-        status_io = MockBackupStatusIo(file_system, status_filename, status)
-        snapshot_handler = MockSnapshotHandler(
-            file_system, False, snapshots, split_count
+    def setup_backup_manager(
+        self,
+        base_setup: dict[str, Any],
+        task_type: BackupType = "full",
+        pool: str = "pool1",
+        reference_type: BackupType | None = None,
+        reference_index: int | None = None,
+    ):
+        status, task = self.create_status(task_type, pool)
+
+        status_io = MockBackupStatusIo(
+            base_setup["file_system"], base_setup["status_filename"], status
         )
-        remote = MockRemoteStorageHandler("test_bucket", file_system, False)
-        compressor = MockCompressionHandler(file_system, False)
-        encryptor = MockEncryptor(file_system, False)
+
+        snapshot_handler = base_setup["snapshot_handler"]
+
+        if reference_type and reference_index is not None:
+            snapshot_handler.set_latest(
+                task.pool, reference_type, base_setup["snapshots"][reference_index]
+            )
+
         backup_mgr = BackupTaskManager(
             status_io,
             snapshot_handler,
-            remote,
-            compressor,
-            encryptor,
-            file_system,
+            base_setup["remote"],
+            base_setup["compressor"],
+            base_setup["encryptor"],
+            base_setup["file_system"],
         )
 
-        # should contain status file
-        assert file_system.check(status_filename) is True
+        return (backup_mgr, status_io, task, snapshot_handler)
 
-        # export snapshot
+    def run_backup_workflow(
+        self,
+        backup_mgr: BackupTaskManager,
+        file_system: MockFileSystem,
+        snapshot_handler: SnapshotHandler,
+        compressor: CompressionHandler,
+        encryptor: EncryptionHandler,
+        remote: RemoteStorageHandler,
+        split_count: int,
+    ):
+        # check status file
+        assert file_system.check("status.txt") is True
+
+        # export
         backup_mgr.run(False)
         exported_files = [
             f for f in file_system.file_system if snapshot_handler.filename in f
         ]
         assert len(exported_files) == split_count
 
-        # compress
+        # compress and encrypt
         for _ in range(split_count):
             backup_mgr.run(False)
         compressed_files = [
@@ -73,182 +141,95 @@ class TestIntegration:
         # upload
         for _ in range(split_count):
             backup_mgr.run(False)
-            # every uploaded file should be removed
-            # assert len(file_system.file_system) == (1 + split_count - (i + 1))
 
-        # check latest snapshot
         backup_mgr.run(False)
-        assert snapshot_handler.get_latest(task0.pool, task0.type) == snapshots[0]
 
         # check remote files
         assert hasattr(remote, "objects") is True
-        assert len(remote.objects) == split_count
+        assert len(remote.objects) == split_count  # type: ignore
 
-        # check no task
+    def test_full_backup(self, base_setup: dict[str, Any]):
+        backup_mgr, status_io, task, snapshot_handler = self.setup_backup_manager(
+            base_setup, task_type="full", pool="pool1"
+        )
+
+        self.run_backup_workflow(
+            backup_mgr,
+            base_setup["file_system"],
+            snapshot_handler,
+            base_setup["compressor"],
+            base_setup["encryptor"],
+            base_setup["remote"],
+            base_setup["split_count"],
+        )
+
+        # check latest snapshot
+        assert (
+            snapshot_handler.get_latest(task.pool, task.type)
+            == base_setup["snapshots"][0]
+        )
         assert len(status_io.load().queue) == 0
 
-    def test_diff_normal(self):
-        task0 = Task(datetime.now(), "diff", "pool1")
-        status = BackupStatusRaw(
-            last_record=datetime.now(),
-            queue=[task0],
-            current=CurrentTask(
-                base="",
-                ref="",
-                split_quantity=0,
-                stage=Stage(
-                    exported=False,
-                    compressed=0,
-                    compress_tested=0,
-                    encrypted=0,
-                    uploaded=0,
-                    removed=0,
-                ),
-            ),
-        )
-        status_filename = "status.txt"
-        snapshots = [f"snapshot_{i}" for i in range(5, 0, -1)]
+    def test_diff_backup(self, base_setup: dict[str, Any]):
         full_snapshot_index = 2
-        split_count = 5
 
-        file_system = MockFileSystem()
-        status_io = MockBackupStatusIo(file_system, status_filename, status)
-        snapshot_handler = MockSnapshotHandler(
-            file_system, False, snapshots, split_count
+        backup_mgr, status_io, task, snapshot_handler = self.setup_backup_manager(
+            base_setup,
+            task_type="diff",
+            pool="pool1",
+            reference_type="full",
+            reference_index=full_snapshot_index,
         )
-        snapshot_handler.set_latest(task0.pool, "full", snapshots[full_snapshot_index])
-        remote = MockRemoteStorageHandler("test_bucket", file_system, False)
-        compressor = MockCompressionHandler(file_system, False)
-        encryptor = MockEncryptor(file_system, False)
-        backup_mgr = BackupTaskManager(
-            status_io,
+
+        self.run_backup_workflow(
+            backup_mgr,
+            base_setup["file_system"],
             snapshot_handler,
-            remote,
-            compressor,
-            encryptor,
-            file_system,
+            base_setup["compressor"],
+            base_setup["encryptor"],
+            base_setup["remote"],
+            base_setup["split_count"],
         )
-
-        # should contain status file
-        assert file_system.check(status_filename) is True
-
-        # export snapshot
-        backup_mgr.run(False)
-        exported_files = [
-            f for f in file_system.file_system if snapshot_handler.filename in f
-        ]
-        assert len(exported_files) == split_count
-
-        # compress
-        for _ in range(split_count):
-            backup_mgr.run(False)
-        compressed_files = [
-            f
-            for f in file_system.file_system
-            if (compressor.extension + encryptor.extension) in f
-        ]
-        assert len(compressed_files) == split_count
-
-        # upload
-        for _ in range(split_count):
-            backup_mgr.run(False)
-            # every uploaded file should be removed
-            # assert len(file_system.file_system) == (1 + split_count - (i + 1))
 
         # check latest snapshot
-        backup_mgr.run(False)
-        assert snapshot_handler.get_latest(task0.pool, task0.type) == snapshots[0]
         assert (
-            snapshot_handler.get_latest(task0.pool, "full")
-            == snapshots[full_snapshot_index]
+            snapshot_handler.get_latest(task.pool, task.type)
+            == base_setup["snapshots"][0]
         )
-
-        # check remote files
-        assert hasattr(remote, "objects") is True
-        assert len(remote.objects) == split_count
-
-        # check no task
+        assert (
+            snapshot_handler.get_latest(task.pool, "full")
+            == base_setup["snapshots"][full_snapshot_index]
+        )
         assert len(status_io.load().queue) == 0
 
-    def test_incr_normal(self):
-        task0 = Task(datetime.now(), "incr", "pool1")
-        status = BackupStatusRaw(
-            last_record=datetime.now(),
-            queue=[task0],
-            current=CurrentTask(
-                base="",
-                ref="",
-                split_quantity=0,
-                stage=Stage(
-                    exported=False,
-                    compressed=0,
-                    compress_tested=0,
-                    encrypted=0,
-                    uploaded=0,
-                    removed=0,
-                ),
-            ),
-        )
-        status_filename = "status.txt"
-        snapshots = [f"snapshot_{i}" for i in range(5, 0, -1)]
+    def test_incr_backup(self, base_setup: dict[str, Any]):
         diff_snapshot_index = 4
-        split_count = 5
 
-        file_system = MockFileSystem()
-        status_io = MockBackupStatusIo(file_system, status_filename, status)
-        snapshot_handler = MockSnapshotHandler(
-            file_system, False, snapshots, split_count
+        backup_mgr, status_io, task, snapshot_handler = self.setup_backup_manager(
+            base_setup,
+            task_type="incr",
+            pool="pool1",
+            reference_type="diff",
+            reference_index=diff_snapshot_index,
         )
-        snapshot_handler.set_latest(task0.pool, "diff", snapshots[diff_snapshot_index])
-        remote = MockRemoteStorageHandler("test_bucket", file_system, False)
-        compressor = MockCompressionHandler(file_system, False)
-        encryptor = MockEncryptor(file_system, False)
-        backup_mgr = BackupTaskManager(
-            status_io,
+
+        self.run_backup_workflow(
+            backup_mgr,
+            base_setup["file_system"],
             snapshot_handler,
-            remote,
-            compressor,
-            encryptor,
-            file_system,
+            base_setup["compressor"],
+            base_setup["encryptor"],
+            base_setup["remote"],
+            base_setup["split_count"],
         )
-
-        # should contain status file
-        assert file_system.check(status_filename) is True
-
-        # export snapshot
-        backup_mgr.run(False)
-        exported_files = [
-            f for f in file_system.file_system if snapshot_handler.filename in f
-        ]
-        assert len(exported_files) == split_count
-
-        # compress
-        for _ in range(split_count):
-            backup_mgr.run(False)
-        compressed_files = [
-            f
-            for f in file_system.file_system
-            if (compressor.extension + encryptor.extension) in f
-        ]
-        assert len(compressed_files) == split_count
-
-        # upload
-        for _ in range(split_count):
-            backup_mgr.run(False)
-            # every uploaded file should be removed
-            # assert len(file_system.file_system) == (1 + split_count - (i + 1))
 
         # check latest snapshot
-        backup_mgr.run(False)
-        assert snapshot_handler.get_latest(task0.pool, task0.type) == snapshots[0]
         assert (
-            snapshot_handler.get_latest(task0.pool, "diff")
-            == snapshots[diff_snapshot_index]
+            snapshot_handler.get_latest(task.pool, task.type)
+            == base_setup["snapshots"][0]
         )
-
-        # check remote files
-        assert hasattr(remote, "objects") is True
-        assert len(remote.objects) == split_count
-
-        # check no task
+        assert (
+            snapshot_handler.get_latest(task.pool, "diff")
+            == base_setup["snapshots"][diff_snapshot_index]
+        )
         assert len(status_io.load().queue) == 0
