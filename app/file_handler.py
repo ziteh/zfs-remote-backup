@@ -14,6 +14,22 @@ class FileHandler(metaclass=ABCMeta):
         """
         raise NotImplementedError()
 
+    @abstractmethod
+    def save(self, filename: str | Path, content: Any) -> None:
+        raise NotImplementedError()
+
+    @abstractmethod
+    def read(self, filename: str | Path) -> Any:
+        raise NotImplementedError()
+
+    @abstractmethod
+    def check(self, filename: str | Path) -> bool:
+        raise NotImplementedError()
+
+    @abstractmethod
+    def clear(self) -> None:
+        raise NotImplementedError()
+
 
 class OsFileHandler(FileHandler):
     """OS File System"""

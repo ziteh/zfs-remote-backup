@@ -4,7 +4,7 @@ from typing import Any
 import boto3
 from minio import Minio
 
-from app.file_handler import MockFileSystem
+from app.file_handler import FileHandler
 from app.sha256 import bytes_to_base64, cal_sha256
 
 
@@ -33,7 +33,7 @@ class MockRemoteStorageHandler(RemoteStorageHandler):
     def __init__(
         self,
         bucket: str,
-        file_system: MockFileSystem,
+        file_system: FileHandler,
         shutdown: bool = False,
     ):
         self.bucket = bucket

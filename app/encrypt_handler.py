@@ -1,7 +1,7 @@
 import subprocess
 from abc import ABCMeta, abstractmethod
 
-from app.file_handler import MockFileSystem
+from app.file_handler import FileHandler
 
 
 class EncryptionHandler(metaclass=ABCMeta):
@@ -54,7 +54,7 @@ class AgeEncryptor(EncryptionHandler):
 class MockEncryptor(EncryptionHandler):
     def __init__(
         self,
-        file_system: MockFileSystem,
+        file_system: FileHandler,
         shutdown: bool = False,
         extension: str = ".cry",
     ) -> None:

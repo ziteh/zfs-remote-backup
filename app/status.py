@@ -8,7 +8,7 @@ from typing import Any, Literal
 import msgpack
 
 from app.define import BackupType
-from app.file_handler import MockFileSystem
+from app.file_handler import FileHandler
 from app.snapshot_handler import SnapshotHandler
 
 type BackupTaskStage = Literal[
@@ -133,14 +133,14 @@ class MsgpackBackupStatusIo(BackupStatusIo):
 
 
 class MockBackupStatusIo(BackupStatusIo):
-    _file_system: MockFileSystem
+    _file_system: FileHandler
     _filename: str
     status: BackupStatusRaw
     saved: list[BackupStatusRaw]
 
     def __init__(
         self,
-        file_system: MockFileSystem,
+        file_system: FileHandler,
         filename: str,
         init_status: BackupStatusRaw | None = None,
     ) -> None:

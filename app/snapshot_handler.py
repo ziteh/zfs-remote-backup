@@ -3,7 +3,7 @@ from abc import ABCMeta, abstractmethod
 from pathlib import Path
 
 from app.define import SPLIT_SIZE, BackupType
-from app.file_handler import MockFileSystem
+from app.file_handler import FileHandler
 
 
 class SnapshotHandler(metaclass=ABCMeta):
@@ -128,7 +128,7 @@ class ZfsSnapshotHandler(SnapshotHandler):
 class MockSnapshotHandler(SnapshotHandler):
     def __init__(
         self,
-        file_system: MockFileSystem,
+        file_system: FileHandler,
         shutdown: bool = False,
         snapshots: list[str] = [],
         export_return: int = 3,
