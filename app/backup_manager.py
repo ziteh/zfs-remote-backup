@@ -9,16 +9,23 @@ from app.encrypt_handler import EncryptionHandler
 from app.file_handler import FileHandler
 from app.remote_handler import RemoteStorageHandler
 from app.snapshot_handler import SnapshotHandler
-from app.status import BackupStatusIo, BackupStatusManager
+from app.status import (
+    BackupStatusIo,
+    BackupStatusRaw,
+    BackupTaskStage,
+    Task,
+)
 
 
 class BackupTaskManager:
-    __status_mgr: BackupStatusManager
     __snapshot_mgr: SnapshotHandler
     __remote_mgr: RemoteStorageHandler
     __compress_mgr: CompressionHandler
     __encrypt_mgr: EncryptionHandler
     __file_mgr: FileHandler
+
+    __status: BackupStatusRaw
+    __status_manager: BackupStatusIo
 
     bucket: str
 
@@ -31,12 +38,15 @@ class BackupTaskManager:
         encryption_handler: EncryptionHandler,
         file_handler: FileHandler,
     ):
-        self.__status_mgr = BackupStatusManager(status_io, snapshot_handler)
         self.__snapshot_mgr = snapshot_handler
         self.__remote_mgr = remote_handler
         self.__compress_mgr = compression_handler
         self.__encrypt_mgr = encryption_handler
         self.__file_mgr = file_handler
+
+        self.__status_manager = status_io
+        self.__status = status_io.load()
+        self.load_backup_task()
 
         # bucket = os.getenv("S3_BUCKET")
         # if bucket is None:
@@ -44,23 +54,38 @@ class BackupTaskManager:
 
     @property
     def pool(self) -> str:
-        return self.__status_mgr.pool
+        """ZFS pool"""
+        # self.__status = self.__status_manager.load()
+        return self.__status.queue[0].pool
 
     @property
     def type(self) -> BackupType:
-        return self.__status_mgr.backup_type
+        """Backup type"""
+        # self.__status = self.__status_manager.load()
+        return self.__status.queue[0].type
 
     @property
     def date(self) -> datetime:
-        return self.__status_mgr.target_date
+        """Target date"""
+        # self.__status = self.__status_manager.load()
+        return self.__status.queue[0].date
 
     @property
     def base(self) -> str:
-        return self.__status_mgr.base_snapshot
+        """Base snapshot"""
+        # self.__status = self.__status_manager.load()
+        return self.__status.current.base
 
     @property
     def ref(self) -> str:
-        return self.__status_mgr.ref_snapshot
+        """Ref snapshot"""
+        # self.__status = self.__status_manager.load()
+        return self.__status.current.ref
+
+    @property
+    def is_no_task(self) -> bool:
+        # self.__status = self.__status_manager.load()
+        return len(self.__status.queue) == 0
 
     @property
     def temp_path(self) -> Path:
@@ -70,12 +95,12 @@ class BackupTaskManager:
         )
 
     def run(self, auto: bool = False) -> None:
-        if self.__status_mgr.is_no_task:
+        if self.is_no_task:
             return
 
-        (stage, current, total) = self.__status_mgr.get_stage()
+        (stage, current, total) = self.get_stage()
 
-        if BackupStatusManager.is_error_stage(current, total):
+        if self.is_error_stage(current, total):
             logger.error(f"Error in stage: {stage}, current: {current}, total: {total}")
             return
 
@@ -102,7 +127,7 @@ class BackupTaskManager:
                 case "done":
                     snapshot_name = self.base.split("@")[-1]
                     self.__snapshot_mgr.set_latest(self.pool, self.type, snapshot_name)
-                    self.__status_mgr.dequeue_backup_task()
+                    self.dequeue_backup_task()
                     return  # all tasks are done
 
                 case _:
@@ -120,22 +145,22 @@ class BackupTaskManager:
         num_parts = self.__snapshot_mgr.export(
             self.pool, self.base, self.ref, str(self.temp_path)
         )
-        self.__status_mgr.set_stage_export(num_parts)
+        self.set_stage_export(num_parts)
         pass
 
     def __handle_compress(self, index: int):
         filename = self.temp_path / f"{self.__snapshot_mgr.filename}{index:06}"
         compressed_filename = self.__compress_mgr.compress(str(filename))
-        self.__status_mgr.set_stage_compress(index + 1)
+        self.set_stage_compress(index + 1)
 
         if not self.__compress_mgr.verify(compressed_filename):
             raise RuntimeError(f"Compression failed for {compressed_filename}")
         self.__file_mgr.delete(str(filename))  # delete the original file
-        self.__status_mgr.set_stage_compress_test(index + 1)
+        self.set_stage_compress_test(index + 1)
 
         _encrypted_filename = self.__encrypt_mgr.encrypt(compressed_filename)
         self.__file_mgr.delete(str(compressed_filename))  # delete the compressed file
-        self.__status_mgr.set_stage_encrypt(index + 1)
+        self.set_stage_encrypt(index + 1)
 
     def __handle_update(self, index: int):
         filename = self.temp_path / (
@@ -152,6 +177,140 @@ class BackupTaskManager:
         }
 
         self.__remote_mgr.upload(str(filename), str(filename), tags, metadata)
-        self.__status_mgr.set_stage_upload(index + 1)
+        self.set_stage_upload(index + 1)
         self.__file_mgr.delete(str(filename))  # delete the uploaded file
-        self.__status_mgr.set_stage_remove(index + 1)
+        self.set_stage_remove(index + 1)
+
+    def is_error_stage(self, current: int, total: int) -> bool:
+        return total < 0 or current < 0
+
+    def get_stage(self) -> tuple[BackupTaskStage, int, int]:
+        stage = self.__status.current.stage
+        if not stage.exported:
+            return ("export", 0, 0)
+
+        split_qty = self.__status.current.split_quantity
+        if split_qty <= 0:
+            return ("export", -1, split_qty)  # error
+
+        if stage.compressed > split_qty:
+            return ("compress", -stage.compressed, -split_qty)  # error
+        elif stage.compressed < split_qty:
+            return ("compress", stage.compressed, split_qty)
+
+        if stage.compress_tested > split_qty:
+            return ("compress_test", -stage.compress_tested, -split_qty)  # error
+        elif stage.compress_tested < split_qty:
+            return ("compress_test", stage.compress_tested, split_qty)
+
+        if stage.encrypted > split_qty:
+            return ("encrypt", -stage.encrypted, -split_qty)  # error
+        elif stage.encrypted < split_qty:
+            return ("encrypt", stage.encrypted, split_qty)
+
+        if stage.uploaded > split_qty:
+            return ("upload", -stage.uploaded, -split_qty)  # error
+        elif stage.uploaded < split_qty:
+            return ("upload", stage.uploaded, split_qty)
+
+        if stage.removed > split_qty:
+            return ("remove", -stage.removed, -split_qty)  # error
+        elif stage.removed < split_qty:
+            return ("remove", stage.removed, split_qty)
+
+        return ("done", 0, split_qty)
+
+    def __save_status(self) -> None:
+        self.__status_manager.save(self.__status)
+
+    def load_backup_task(self) -> Task | None:
+        if len(self.__status.queue) == 0:
+            return None
+
+        task = self.__status.queue[0]
+
+        # Clear the task status
+        self.__status.current.split_quantity = 0
+        self.__status.current.stage.exported = False
+        self.__status.current.stage.compressed = 0
+        self.__status.current.stage.compress_tested = 0
+        self.__status.current.stage.encrypted = 0
+        self.__status.current.stage.uploaded = 0
+        self.__status.current.stage.removed = 0
+
+        # Set the snapshot
+        snapshots = self.__snapshot_mgr.list(task.pool)
+        self.__status.current.base = snapshots[0]
+
+        match task.type:
+            case "full":
+                # Full backup, no reference snapshot
+                self.__status.current.ref = ""
+
+            case "diff":
+                # Differential backup, use the latest full snapshot as reference
+                self.__status.current.ref = (
+                    self.__snapshot_mgr.get_latest(task.pool, "full") or "ERROR_NONE"
+                )
+
+            case "incr":
+                # Incremental backup, use the latest differential snapshot as reference
+                self.__status.current.ref = (
+                    self.__snapshot_mgr.get_latest(task.pool, "diff") or "ERROR_NONE"
+                )
+
+            case _:
+                msg = f"Unknown backup type: {task.type}"
+                raise ValueError(msg)
+
+        return task
+
+    def enqueue_backup_task(self, task: Task) -> int:
+        self.__status.queue.append(task)
+        self.__save_status()
+        return len(self.__status.queue)
+
+    def dequeue_backup_task(self) -> int:
+        if len(self.__status.queue) == 0:
+            return 0
+
+        _task = self.__status.queue.pop(0)
+        self.load_backup_task()
+        self.__save_status()
+        return len(self.__status.queue)
+
+    def set_stage_export(self, parts: int | None):
+        """Sets the export stage of the backup status.
+
+        Args:
+            parts: Number of parts export and split. `None` if not exported.
+        """
+
+        if parts is None:
+            self.__status.current.stage.exported = False
+            self.__status.current.split_quantity = 0
+        else:
+            self.__status.current.stage.exported = True
+            self.__status.current.split_quantity = parts
+
+        self.__save_status()
+
+    def set_stage_compress(self, done: int):
+        self.__status.current.stage.compressed = done
+        self.__save_status()
+
+    def set_stage_compress_test(self, done: int):
+        self.__status.current.stage.compress_tested = done
+        self.__save_status()
+
+    def set_stage_encrypt(self, done: int):
+        self.__status.current.stage.encrypted = done
+        self.__save_status()
+
+    def set_stage_upload(self, done: int):
+        self.__status.current.stage.uploaded = done
+        self.__save_status()
+
+    def set_stage_remove(self, done: int):
+        self.__status.current.stage.removed = done
+        self.__save_status()
