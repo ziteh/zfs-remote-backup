@@ -30,7 +30,7 @@ class TestIntegration:
             ),
         )
         status_filename = "status.txt"
-        snapshots = [f"snapshot_{i}" for i in range(3)]
+        snapshots = [f"snapshot_{i}" for i in range(5, 0, -1)]
         split_count = 5
 
         file_system = MockFileSystem()
@@ -107,7 +107,7 @@ class TestIntegration:
             ),
         )
         status_filename = "status.txt"
-        snapshots = [f"snapshot_{i}" for i in range(5)]
+        snapshots = [f"snapshot_{i}" for i in range(5, 0, -1)]
         full_snapshot_index = 2
         split_count = 5
 
@@ -190,7 +190,7 @@ class TestIntegration:
             ),
         )
         status_filename = "status.txt"
-        snapshots = [f"snapshot_{i}" for i in range(5)]
+        snapshots = [f"snapshot_{i}" for i in range(5, 0, -1)]
         diff_snapshot_index = 4
         split_count = 5
 
