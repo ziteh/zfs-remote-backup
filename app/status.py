@@ -9,7 +9,6 @@ import msgpack
 
 from app.define import BackupType
 from app.file_handler import MockFileSystem
-from app.latest_snapshot import read_latest
 from app.snapshot_handler import SnapshotHandler
 
 type BackupTaskStage = Literal[

@@ -2,6 +2,7 @@ from abc import ABCMeta, abstractmethod
 from typing import Any
 
 import boto3
+from minio import Minio
 
 from app.file_handler import MockFileSystem
 from app.sha256 import bytes_to_base64, cal_sha256
@@ -93,4 +94,47 @@ class AwsS3Oss(RemoteStorageHandler):
 
         print(
             f"File '{filename}' uploaded to S3://{self.bucket}/{key} with SHA256(Base64) '{sha256_base64}'."
+        )
+
+
+class MinioOss(RemoteStorageHandler):
+    """MinIO Object Storage Service"""
+
+    def __init__(
+        self,
+        endpoint: str,
+        access_key: str,
+        secret_key: str,
+        bucket: str,
+        secure: bool = False,
+    ) -> None:
+        self.client = Minio(endpoint, access_key, secret_key, secure=secure)
+        self.bucket = bucket
+
+    def upload(
+        self,
+        filename: str,
+        key: str,
+        tags: dict[str, str] | None = None,
+        metadata: dict[str, str] | None = None,
+    ) -> None:
+        sha256_base64 = bytes_to_base64(cal_sha256(filename))
+
+        extra_headers = {"x-amz-meta-sha256": sha256_base64}
+
+        if metadata:
+            extra_headers.update({f"x-amz-meta-{k}": v for k, v in metadata.items()})
+
+        if not self.client.bucket_exists(self.bucket):
+            self.client.make_bucket(self.bucket)
+
+        self.client.fput_object(
+            bucket_name=self.bucket,
+            object_name=key,
+            file_path=filename,
+            metadata=extra_headers,
+        )
+
+        print(
+            f"File '{filename}' uploaded to MinIO bucket '{self.bucket}' with key '{key}' and SHA256(Base64) '{sha256_base64}'."
         )
