@@ -25,6 +25,7 @@
         "uv.lock",
     ],
     "cSpell.words": [
-        "Encryptor"
+        "Encryptor",
+        "fput"
     ],
 }

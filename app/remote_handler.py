@@ -132,7 +132,7 @@ class MinioOss(RemoteStorageHandler):
             bucket_name=self.bucket,
             object_name=key,
             file_path=filename,
-            metadata=extra_headers,
+            metadata=extra_headers,  # type: ignore
         )
 
         print(
