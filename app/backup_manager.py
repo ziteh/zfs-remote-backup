@@ -27,8 +27,6 @@ class BackupTaskManager:
     __status: BackupStatusRaw
     __status_manager: BackupStatusIo
 
-    bucket: str
-
     def __init__(
         self,
         status_io: BackupStatusIo,
@@ -46,11 +44,7 @@ class BackupTaskManager:
 
         self.__status_manager = status_io
         self.__status = status_io.load()
-        self.load_backup_task()
-
-        # bucket = os.getenv("S3_BUCKET")
-        # if bucket is None:
-        #     raise ValueError("S3_BUCKET environment variable is not set")
+        self.__load_backup_task()
 
     @property
     def pool(self) -> str:
@@ -98,9 +92,9 @@ class BackupTaskManager:
         if self.is_no_task:
             return
 
-        (stage, current, total) = self.get_stage()
+        (stage, current, total) = self.__get_stage()
 
-        if self.is_error_stage(current, total):
+        if self.__is_error_stage(current, total):
             logger.error(f"Error in stage: {stage}, current: {current}, total: {total}")
             return
 
@@ -127,7 +121,7 @@ class BackupTaskManager:
                 case "done":
                     snapshot_name = self.base.split("@")[-1]
                     self.__snapshot_mgr.set_latest(self.pool, self.type, snapshot_name)
-                    self.dequeue_backup_task()
+                    self.__dequeue_backup_task()
                     return  # all tasks are done
 
                 case _:
@@ -145,22 +139,22 @@ class BackupTaskManager:
         num_parts = self.__snapshot_mgr.export(
             self.pool, self.base, self.ref, str(self.temp_path)
         )
-        self.set_stage_export(num_parts)
+        self.__set_stage_export(num_parts)
         pass
 
     def __handle_compress(self, index: int):
         filename = self.temp_path / f"{self.__snapshot_mgr.filename}{index:06}"
         compressed_filename = self.__compress_mgr.compress(str(filename))
-        self.set_stage_compress(index + 1)
+        self.__set_stage_compress(index + 1)
 
         if not self.__compress_mgr.verify(compressed_filename):
             raise RuntimeError(f"Compression failed for {compressed_filename}")
         self.__file_mgr.delete(str(filename))  # delete the original file
-        self.set_stage_compress_test(index + 1)
+        self.__set_stage_compress_test(index + 1)
 
         _encrypted_filename = self.__encrypt_mgr.encrypt(compressed_filename)
         self.__file_mgr.delete(str(compressed_filename))  # delete the compressed file
-        self.set_stage_encrypt(index + 1)
+        self.__set_stage_encrypt(index + 1)
 
     def __handle_update(self, index: int):
         filename = self.temp_path / (
@@ -177,14 +171,14 @@ class BackupTaskManager:
         }
 
         self.__remote_mgr.upload(str(filename), str(filename), tags, metadata)
-        self.set_stage_upload(index + 1)
+        self.__set_stage_upload(index + 1)
         self.__file_mgr.delete(str(filename))  # delete the uploaded file
-        self.set_stage_remove(index + 1)
+        self.__set_stage_remove(index + 1)
 
-    def is_error_stage(self, current: int, total: int) -> bool:
+    def __is_error_stage(self, current: int, total: int) -> bool:
         return total < 0 or current < 0
 
-    def get_stage(self) -> tuple[BackupTaskStage, int, int]:
+    def __get_stage(self) -> tuple[BackupTaskStage, int, int]:
         stage = self.__status.current.stage
         if not stage.exported:
             return ("export", 0, 0)
@@ -223,7 +217,7 @@ class BackupTaskManager:
     def __save_status(self) -> None:
         self.__status_manager.save(self.__status)
 
-    def load_backup_task(self) -> Task | None:
+    def __load_backup_task(self) -> Task | None:
         if len(self.__status.queue) == 0:
             return None
 
@@ -270,16 +264,16 @@ class BackupTaskManager:
         self.__save_status()
         return len(self.__status.queue)
 
-    def dequeue_backup_task(self) -> int:
+    def __dequeue_backup_task(self) -> int:
         if len(self.__status.queue) == 0:
             return 0
 
         _task = self.__status.queue.pop(0)
-        self.load_backup_task()
+        self.__load_backup_task()
         self.__save_status()
         return len(self.__status.queue)
 
-    def set_stage_export(self, parts: int | None):
+    def __set_stage_export(self, parts: int | None):
         """Sets the export stage of the backup status.
 
         Args:
@@ -295,22 +289,22 @@ class BackupTaskManager:
 
         self.__save_status()
 
-    def set_stage_compress(self, done: int):
+    def __set_stage_compress(self, done: int):
         self.__status.current.stage.compressed = done
         self.__save_status()
 
-    def set_stage_compress_test(self, done: int):
+    def __set_stage_compress_test(self, done: int):
         self.__status.current.stage.compress_tested = done
         self.__save_status()
 
-    def set_stage_encrypt(self, done: int):
+    def __set_stage_encrypt(self, done: int):
         self.__status.current.stage.encrypted = done
         self.__save_status()
 
-    def set_stage_upload(self, done: int):
+    def __set_stage_upload(self, done: int):
         self.__status.current.stage.uploaded = done
         self.__save_status()
 
-    def set_stage_remove(self, done: int):
+    def __set_stage_remove(self, done: int):
         self.__status.current.stage.removed = done
         self.__save_status()

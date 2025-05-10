@@ -1,4 +1,3 @@
-import os
 from abc import ABCMeta, abstractmethod
 from dataclasses import asdict, dataclass
 from datetime import datetime
@@ -9,7 +8,6 @@ import msgpack
 
 from app.define import BackupType
 from app.file_handler import FileHandler
-from app.snapshot_handler import SnapshotHandler
 
 type BackupTaskStage = Literal[
     "export",
