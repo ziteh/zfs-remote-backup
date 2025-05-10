@@ -34,3 +34,9 @@ def get_export_filename(pool: str, type: BackupType, date: datetime) -> str:
 
 
 EXPORT_FILENAME = get_export_filename
+
+
+class SystemShutdownError(Exception):
+    """Exception raised when the system is shutting down."""
+
+    pass

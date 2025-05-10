@@ -74,15 +74,24 @@ class ZstdCompressor(CompressionHandler):
 
 
 class MockCompressionHandler(CompressionHandler):
-    def __init__(self, file_system: MockFileSystem, extension: str = ".cmp"):
+    def __init__(
+        self,
+        file_system: MockFileSystem,
+        shutdown: bool = False,
+        extension: str = ".cmp",
+    ):
         self._file_system = file_system
         self._extension = extension
+        self.shutdown = shutdown
 
     @property
     def extension(self) -> str:
         return self._extension
 
     def compress(self, filename: str) -> str:
+        if self.shutdown:
+            raise RuntimeError("System is shutting down.")
+
         if not self._file_system.check(filename):
             raise FileNotFoundError(f"File '{filename}' not found.")
 
@@ -91,4 +100,7 @@ class MockCompressionHandler(CompressionHandler):
         return new_filename
 
     def verify(self, filename: str) -> bool:
+        if self.shutdown:
+            raise RuntimeError("System is shutting down.")
+
         return self._file_system.check(filename)  # just check file exist

@@ -12,7 +12,6 @@ class RemoteStorageHandler(metaclass=ABCMeta):
     def upload(
         self,
         filename: str,
-        bucket: str,
         key: str,
         tags: dict[str, str] | None,
         metadata: dict[str, str] | None,
@@ -30,22 +29,31 @@ class RemoteStorageHandler(metaclass=ABCMeta):
 
 
 class MockRemoteStorageHandler(RemoteStorageHandler):
-    def __init__(self, file_system: MockFileSystem):
+    def __init__(
+        self,
+        bucket: str,
+        file_system: MockFileSystem,
+        shutdown: bool = False,
+    ):
+        self.bucket = bucket
+        self.shutdown = shutdown
         self.objects: dict[str, Any] = {}
         self._file_system = file_system
 
     def upload(
         self,
         filename: str,
-        bucket: str,
         key: str,
         tags: dict[str, str] | None,
         metadata: dict[str, str] | None,
     ) -> None:
+        if self.shutdown:
+            raise RuntimeError("System is shutting down.")
+
         if not self._file_system.check(filename):
             raise FileNotFoundError(f"File '{filename}' not found.")
 
-        target = f"{bucket}/{key}"
+        target = f"{self.bucket}:{key}"
         self.objects[target] = {
             "content": self._file_system.read(filename),
             "tags": tags,
@@ -56,10 +64,12 @@ class MockRemoteStorageHandler(RemoteStorageHandler):
 class AwsS3Oss(RemoteStorageHandler):
     """AWS S3 Object Storage Service"""
 
+    def __init__(self, bucket: str) -> None:
+        self.bucket = bucket
+
     def upload(
         self,
         filename: str,
-        bucket: str,
         key: str,
         tags: dict[str, str] | None,
         metadata: dict[str, str] | None,
@@ -79,8 +89,8 @@ class AwsS3Oss(RemoteStorageHandler):
             extra_args["Metadata"] = metadata
 
         s3 = boto3.client("s3")
-        s3.upload_file(filename, bucket, key, extra_args)
+        s3.upload_file(filename, self.bucket, key, extra_args)
 
         print(
-            f"File '{filename}' uploaded to S3://{bucket}/{key} with SHA256(Base64) '{sha256_base64}'."
+            f"File '{filename}' uploaded to S3://{self.bucket}/{key} with SHA256(Base64) '{sha256_base64}'."
         )

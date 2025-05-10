@@ -10,7 +10,7 @@ from app.status import BackupStatusRaw, CurrentTask, MockBackupStatusIo, Stage, 
 
 
 class TestIntegration:
-    def test_normal(self):
+    def test_full_normal(self):
         task0 = Task(datetime.now(), "full", "pool1")
         status = BackupStatusRaw(
             last_record=datetime.now(),
@@ -30,18 +30,22 @@ class TestIntegration:
             ),
         )
         status_filename = "status.txt"
+        snapshots = [
+            "snapshot_0",
+            "snapshot_1",
+            "snapshot_2",
+        ]
+        split_count = 5
 
         file_system = MockFileSystem()
         status_io = MockBackupStatusIo(file_system, status_filename, status)
-        snapshot_handler = MockSnapshotHandler(file_system)
-        snapshot_handler.snapshots.append("snapshot_0")
-        snapshot_handler.snapshots.append("snapshot_1")
-        snapshot_handler.snapshots.append("snapshot_2")
-        remote = MockRemoteStorageHandler(file_system)
-        compressor = MockCompressionHandler(file_system)
-        encryptor = MockEncryptor(file_system)
+        snapshot_handler = MockSnapshotHandler(
+            file_system, False, snapshots, split_count
+        )
+        remote = MockRemoteStorageHandler("test_bucket", file_system, False)
+        compressor = MockCompressionHandler(file_system, False)
+        encryptor = MockEncryptor(file_system, False)
         backup_mgr = BackupTaskManager(
-            "test_bucket",
             status_io,
             snapshot_handler,
             remote,
@@ -50,7 +54,30 @@ class TestIntegration:
             file_system,
         )
 
+        # should only contain status file
         assert len(file_system.file_system) == 1
         assert file_system.check(status_filename) is True
-        backup_mgr.run()
-        assert len(file_system.file_system) == 4
+
+        # export snapshot
+        backup_mgr.run(False)
+        assert len(file_system.file_system) == (1 + split_count)
+
+        # compress
+        for _ in range(split_count):
+            backup_mgr.run(False)
+            # every compressed file should be removed
+            assert len(file_system.file_system) == (1 + split_count)
+
+        # upload
+        for i in range(split_count):
+            backup_mgr.run(False)
+            # every uploaded file should be removed
+            assert len(file_system.file_system) == (1 + split_count - (i + 1))
+
+        # should only contain status file
+        assert len(file_system.file_system) == 1
+        assert file_system.check(status_filename) is True
+
+        # check remote files
+        assert hasattr(remote, "objects") is True
+        assert len(remote.objects) == split_count

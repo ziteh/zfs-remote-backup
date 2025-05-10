@@ -99,14 +99,19 @@ class MockSnapshotHandler(SnapshotHandler):
     def __init__(
         self,
         file_system: MockFileSystem,
+        shutdown: bool = False,
+        snapshots: list[str] = [],
         export_return: int = 3,
         filename: str = "mock_snapshot_",
     ) -> None:
         self._filename = filename
         self._file_system = file_system
+        self.shutdown = shutdown
         self.export_return = export_return
-        self.snapshots: list[str] = []
-        self.export_calls: list[dict[str, str]] = []  # keep track of calls for test assertions
+        self.snapshots: list[str] = snapshots
+        self.export_calls: list[
+            dict[str, str]
+        ] = []  # keep track of calls for test assertions
 
     @property
     def filename(self) -> str:
@@ -119,13 +124,19 @@ class MockSnapshotHandler(SnapshotHandler):
         ref_snapshot: str | None,
         output_dir: str,
     ) -> int:
+        if self.shutdown:
+            raise RuntimeError("System is shutting down.")
+
         output_path = Path(output_dir)
         for i in range(self.export_return):
             filename = f"{self._filename}{i:06}"
-            content = f"{pool}\n{base_snapshot}\n{ref_snapshot}\n{i}"
+            content = f"{pool}\n{base_snapshot}\n{ref_snapshot or 'NONE'}\n{i}"
             self._file_system.save(output_path / filename, content)
 
         return self.export_return
 
     def list(self, pool: str) -> list[str]:
+        if self.shutdown:
+            raise RuntimeError("System is shutting down.")
+
         return [f"{pool}@{s}" for s in self.snapshots]

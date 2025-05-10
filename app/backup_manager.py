@@ -4,7 +4,7 @@ from pathlib import Path
 from loguru import logger
 
 from app.compress_handler import CompressionHandler
-from app.define import TEMP_DIR, BackupType
+from app.define import TEMP_DIR, BackupType, SystemShutdownError
 from app.encrypt_handler import EncryptionHandler
 from app.file_handler import FileHandler
 from app.remote_handler import RemoteStorageHandler
@@ -24,7 +24,6 @@ class BackupTaskManager:
 
     def __init__(
         self,
-        bucket: str,
         status_io: BackupStatusIo,
         snapshot_handler: SnapshotHandler,
         remote_handler: RemoteStorageHandler,
@@ -42,7 +41,6 @@ class BackupTaskManager:
         # bucket = os.getenv("S3_BUCKET")
         # if bucket is None:
         #     raise ValueError("S3_BUCKET environment variable is not set")
-        self.bucket = bucket
 
     @property
     def pool(self) -> str:
@@ -67,9 +65,11 @@ class BackupTaskManager:
     @property
     def temp_path(self) -> Path:
         """Get the temporary path for the backup task."""
-        return Path(TEMP_DIR) / self.pool / f"{self.type}_{self.date.strftime('%Y-%m-%d')}"
+        return (
+            Path(TEMP_DIR) / self.pool / f"{self.type}_{self.date.strftime('%Y-%m-%d')}"
+        )
 
-    def run(self):
+    def run(self, auto: bool = False) -> None:
         if self.__status_mgr.is_no_task:
             return
 
@@ -79,36 +79,45 @@ class BackupTaskManager:
             logger.error(f"Error in stage: {stage}, current: {current}, total: {total}")
             return
 
-        match stage:
-            case "export":
-                self.__handle_export()
+        try:
+            match stage:
+                case "export":
+                    self.__handle_export()
 
-            case "compress":
-                self.__handle_compress(current - 1)
+                case "compress":
+                    self.__handle_compress(current)
 
-            case "compress_test":
-                pass
+                case "compress_test":
+                    pass
 
-            case "encrypt":
-                pass
+                case "encrypt":
+                    pass
 
-            case "upload":
-                self.__handle_update(current - 1)
+                case "upload":
+                    self.__handle_update(current)
 
-            case "remove":
-                pass
+                case "remove":
+                    pass
 
-            case "done":
-                self.__status_mgr.dequeue_backup_task()
-                return
+                case "done":
+                    self.__status_mgr.dequeue_backup_task()
+                    return  # all tasks are done
 
-            case _:
-                msg = f"Unknown stage {stage}"
-                logger.critical(msg)
-                raise ValueError(msg)
+                case _:
+                    msg = f"Unknown stage {stage}"
+                    logger.critical(msg)
+                    raise ValueError(msg)
+        except SystemShutdownError as e:
+            logger.error(f"System is shutting down. {e}")
+            return
+
+        if auto:
+            self.run(True)
 
     def __handle_export(self):
-        num_parts = self.__snapshot_mgr.export(self.pool, self.base, self.ref, str(self.temp_path))
+        num_parts = self.__snapshot_mgr.export(
+            self.pool, self.base, self.ref, str(self.temp_path)
+        )
         self.__status_mgr.set_stage_export(num_parts)
         pass
 
@@ -119,18 +128,18 @@ class BackupTaskManager:
 
         if not self.__compress_mgr.verify(compressed_filename):
             raise RuntimeError(f"Compression failed for {compressed_filename}")
+        self.__file_mgr.delete(str(filename))  # delete the original file
         self.__status_mgr.set_stage_compress_test(index + 1)
 
         _encrypted_filename = self.__encrypt_mgr.encrypt(compressed_filename)
-        self.__file_mgr.delete(str(compressed_filename))  # delete the original file
+        self.__file_mgr.delete(str(compressed_filename))  # delete the compressed file
         self.__status_mgr.set_stage_encrypt(index + 1)
 
     def __handle_update(self, index: int):
-        filename = (
-            self.temp_path
-            / f"{self.__snapshot_mgr.filename}{index:06}"
-            / self.__compress_mgr.extension
-            / self.__encrypt_mgr.extension
+        filename = self.temp_path / (
+            f"{self.__snapshot_mgr.filename}{index:06}"
+            + self.__compress_mgr.extension
+            + self.__encrypt_mgr.extension
         )
 
         tags = {"backup-type": self.type}
@@ -140,7 +149,7 @@ class BackupTaskManager:
             "ref-snapshot": self.ref,
         }
 
-        self.__remote_mgr.upload(str(filename), self.bucket, str(filename), tags, metadata)
+        self.__remote_mgr.upload(str(filename), str(filename), tags, metadata)
         self.__status_mgr.set_stage_upload(index + 1)
         self.__file_mgr.delete(str(filename))  # delete the uploaded file
         self.__status_mgr.set_stage_remove(index + 1)

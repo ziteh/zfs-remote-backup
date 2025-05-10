@@ -52,15 +52,24 @@ class AgeEncryptor(EncryptionHandler):
 
 
 class MockEncryptor(EncryptionHandler):
-    def __init__(self, file_system: MockFileSystem, extension: str = ".cry") -> None:
+    def __init__(
+        self,
+        file_system: MockFileSystem,
+        shutdown: bool = False,
+        extension: str = ".cry",
+    ) -> None:
         self._file_system = file_system
         self._extension = extension
+        self.shutdown = shutdown
 
     @property
     def extension(self) -> str:
         return self._extension
 
     def encrypt(self, filename: str) -> str:
+        if self.shutdown:
+            raise RuntimeError("System is shutting down.")
+
         if not self._file_system.check(filename):
             raise FileNotFoundError(f"File '{filename}' not found.")
 
