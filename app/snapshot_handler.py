@@ -2,7 +2,7 @@ import subprocess
 from abc import ABCMeta, abstractmethod
 from pathlib import Path
 
-from app.define import SPLIT_SIZE
+from app.define import SPLIT_SIZE, BackupType
 from app.file_handler import MockFileSystem
 
 
@@ -42,6 +42,30 @@ class SnapshotHandler(metaclass=ABCMeta):
 
         Returns:
             A list of snapshot names.
+        """
+        raise NotImplementedError()
+
+    @abstractmethod
+    def get_latest(self, pool: str, type: BackupType) -> str | None:
+        """Get the latest snapshot in the given ZFS pool.
+
+        Args:
+            pool: The name of the ZFS pool.
+            type: The type of backup.
+
+        Returns:
+            The name of the latest snapshot or None if no snapshot exists.
+        """
+        raise NotImplementedError()
+
+    @abstractmethod
+    def set_latest(self, pool: str, type: BackupType, snapshot: str) -> None:
+        """Set the latest snapshot in the given ZFS pool.
+
+        Args:
+            pool: The name of the ZFS pool.
+            type: The type of backup.
+            snapshot: The name of the snapshot to set as latest.
         """
         raise NotImplementedError()
 
@@ -94,6 +118,12 @@ class ZfsSnapshotHandler(SnapshotHandler):
         snapshots.reverse()
         return snapshots
 
+    def get_latest(self, pool: str, type: BackupType) -> str:
+        return ""  # TODO
+
+    def set_latest(self, pool: str, type: BackupType, snapshot: str) -> None:
+        pass  # TODO
+
 
 class MockSnapshotHandler(SnapshotHandler):
     def __init__(
@@ -140,3 +170,29 @@ class MockSnapshotHandler(SnapshotHandler):
             raise RuntimeError("System is shutting down.")
 
         return [f"{pool}@{s}" for s in self.snapshots]
+
+    def get_latest(self, pool: str, type: BackupType) -> str | None:
+        if self.shutdown:
+            raise RuntimeError("System is shutting down.")
+
+        latest_dir_path = Path(pool)
+        full_path = latest_dir_path / self.__get_latest_filename(type)
+        if not self._file_system.check(full_path):
+            return None  # no latest snapshot
+
+        latest_snapshot: str = self._file_system.read(full_path)
+        return latest_snapshot if latest_snapshot else None  # empty file
+
+    def set_latest(self, pool: str, type: BackupType, snapshot: str) -> None:
+        if self.shutdown:
+            raise RuntimeError("System is shutting down.")
+
+        latest_dir_path = Path(pool)
+        full_path = latest_dir_path / self.__get_latest_filename(type)
+        self._file_system.save(full_path, snapshot)
+
+        if not self._file_system.check(full_path):
+            raise RuntimeError(f"Latest snapshot file save failed: {full_path}")
+
+    def __get_latest_filename(self, type: BackupType) -> str:
+        return f"latest_{type}.txt"

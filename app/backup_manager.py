@@ -100,6 +100,8 @@ class BackupTaskManager:
                     pass
 
                 case "done":
+                    snapshot_name = self.base.split("@")[-1]
+                    self.__snapshot_mgr.set_latest(self.pool, self.type, snapshot_name)
                     self.__status_mgr.dequeue_backup_task()
                     return  # all tasks are done
 

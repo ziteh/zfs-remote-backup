@@ -1,6 +1,13 @@
+from abc import ABCMeta, abstractmethod
 from pathlib import Path
 
-from app.define import ENCODING, LATEST_SNAPSHOT_FILENAME, NEWLINE, RECORD_DIR, BackupType
+from app.define import (
+    ENCODING,
+    LATEST_SNAPSHOT_FILENAME,
+    NEWLINE,
+    RECORD_DIR,
+    BackupType,
+)
 
 
 def read_latest(pool: str, type: BackupType) -> str:

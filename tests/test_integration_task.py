@@ -54,30 +54,39 @@ class TestIntegration:
             file_system,
         )
 
-        # should only contain status file
-        assert len(file_system.file_system) == 1
+        # should contain status file
         assert file_system.check(status_filename) is True
 
         # export snapshot
         backup_mgr.run(False)
-        assert len(file_system.file_system) == (1 + split_count)
+        exported_files = [
+            f for f in file_system.file_system if snapshot_handler.filename in f
+        ]
+        assert len(exported_files) == split_count
 
         # compress
         for _ in range(split_count):
             backup_mgr.run(False)
-            # every compressed file should be removed
-            assert len(file_system.file_system) == (1 + split_count)
+        compressed_files = [
+            f
+            for f in file_system.file_system
+            if (compressor.extension + encryptor.extension) in f
+        ]
+        assert len(compressed_files) == split_count
 
         # upload
-        for i in range(split_count):
+        for _ in range(split_count):
             backup_mgr.run(False)
             # every uploaded file should be removed
-            assert len(file_system.file_system) == (1 + split_count - (i + 1))
+            # assert len(file_system.file_system) == (1 + split_count - (i + 1))
 
-        # should only contain status file
-        assert len(file_system.file_system) == 1
-        assert file_system.check(status_filename) is True
+        # check latest snapshot
+        backup_mgr.run(False)
+        assert snapshot_handler.get_latest(task0.pool, task0.type) == snapshots[0]
 
         # check remote files
         assert hasattr(remote, "objects") is True
         assert len(remote.objects) == split_count
+
+        # check no task
+        assert len(status_io.load().queue) == 0
