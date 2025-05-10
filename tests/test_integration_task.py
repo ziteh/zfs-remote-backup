@@ -67,7 +67,6 @@ class TestIntegration:
                 stage=Stage(
                     exported=False,
                     compressed=0,
-                    compress_tested=0,
                     encrypted=0,
                     uploaded=0,
                     removed=0,

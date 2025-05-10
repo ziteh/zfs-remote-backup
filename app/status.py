@@ -12,10 +12,8 @@ from app.file_handler import FileHandler
 type BackupTaskStage = Literal[
     "export",
     "compress",
-    "compress_test",
     "encrypt",
     "upload",
-    "remove",
     "done",
     # "error",
 ]
@@ -40,9 +38,6 @@ class Stage:
 
     compressed: int
     """Number of compressed files"""
-
-    compress_tested: int
-    """Number of compressed files tested"""
 
     encrypted: int
     """Number of encrypted files"""
@@ -101,7 +96,7 @@ class MsgpackBackupStatusIo(BackupStatusIo):
         if not self.__file_path.exists():
             # File not exists, create a new status
             status = BackupStatusRaw(
-                datetime.now(), [], CurrentTask("", "", 0, Stage(False, 0, 0, 0, 0, 0))
+                datetime.now(), [], CurrentTask("", "", 0, Stage(False, 0, 0, 0, 0))
             )
             self.save(status)
             return status
@@ -153,7 +148,6 @@ class MockBackupStatusIo(BackupStatusIo):
                     stage=Stage(
                         exported=False,
                         compressed=0,
-                        compress_tested=0,
                         encrypted=0,
                         uploaded=0,
                         removed=0,

@@ -106,17 +106,11 @@ class BackupTaskManager:
                 case "compress":
                     self.__handle_compress(current)
 
-                case "compress_test":
-                    pass
-
                 case "encrypt":
                     pass
 
                 case "upload":
                     self.__handle_update(current)
-
-                case "remove":
-                    pass
 
                 case "done":
                     snapshot_name = self.base.split("@")[-1]
@@ -150,7 +144,7 @@ class BackupTaskManager:
         if not self.__compress_mgr.verify(compressed_filename):
             raise RuntimeError(f"Compression failed for {compressed_filename}")
         self.__file_mgr.delete(str(filename))  # delete the original file
-        self.__set_stage_compress_test(index + 1)
+        self.__set_stage_compress(index + 1)
 
         _encrypted_filename = self.__encrypt_mgr.encrypt(compressed_filename)
         self.__file_mgr.delete(str(compressed_filename))  # delete the compressed file
@@ -192,11 +186,6 @@ class BackupTaskManager:
         elif stage.compressed < split_qty:
             return ("compress", stage.compressed, split_qty)
 
-        if stage.compress_tested > split_qty:
-            return ("compress_test", -stage.compress_tested, -split_qty)  # error
-        elif stage.compress_tested < split_qty:
-            return ("compress_test", stage.compress_tested, split_qty)
-
         if stage.encrypted > split_qty:
             return ("encrypt", -stage.encrypted, -split_qty)  # error
         elif stage.encrypted < split_qty:
@@ -206,11 +195,6 @@ class BackupTaskManager:
             return ("upload", -stage.uploaded, -split_qty)  # error
         elif stage.uploaded < split_qty:
             return ("upload", stage.uploaded, split_qty)
-
-        if stage.removed > split_qty:
-            return ("remove", -stage.removed, -split_qty)  # error
-        elif stage.removed < split_qty:
-            return ("remove", stage.removed, split_qty)
 
         return ("done", 0, split_qty)
 
@@ -227,7 +211,6 @@ class BackupTaskManager:
         self.__status.current.split_quantity = 0
         self.__status.current.stage.exported = False
         self.__status.current.stage.compressed = 0
-        self.__status.current.stage.compress_tested = 0
         self.__status.current.stage.encrypted = 0
         self.__status.current.stage.uploaded = 0
         self.__status.current.stage.removed = 0
@@ -291,10 +274,6 @@ class BackupTaskManager:
 
     def __set_stage_compress(self, done: int):
         self.__status.current.stage.compressed = done
-        self.__save_status()
-
-    def __set_stage_compress_test(self, done: int):
-        self.__status.current.stage.compress_tested = done
         self.__save_status()
 
     def __set_stage_encrypt(self, done: int):
