@@ -179,7 +179,9 @@ class BackupStatusManager:
     __status: BackupStatusRaw
     __status_manager: BackupStatusIo
 
-    def __init__(self, manager: BackupStatusIo, snapshot_handler: SnapshotHandler) -> None:
+    def __init__(
+        self, manager: BackupStatusIo, snapshot_handler: SnapshotHandler
+    ) -> None:
         self._snapshot_handler = snapshot_handler
         self.__status_manager = manager
         self.__status = manager.load()
@@ -296,11 +298,15 @@ class BackupStatusManager:
 
             case "diff":
                 # Differential backup, use the latest full snapshot as reference
-                self.__status.current.ref = read_latest(task.pool, "full")
+                self.__status.current.ref = (
+                    self._snapshot_handler.get_latest(task.pool, "full") or "ERROR_NONE"
+                )
 
             case "incr":
                 # Incremental backup, use the latest differential snapshot as reference
-                self.__status.current.ref = read_latest(task.pool, "diff")
+                self.__status.current.ref = (
+                    self._snapshot_handler.get_latest(task.pool, "diff") or "ERROR_NONE"
+                )
 
             case _:
                 msg = f"Unknown backup type: {task.type}"
