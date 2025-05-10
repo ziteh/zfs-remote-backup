@@ -78,7 +78,7 @@ class MockCompressionHandler(CompressionHandler):
         self,
         file_system: FileHandler,
         shutdown: bool = False,
-        extension: str = ".cmp",
+        extension: str = ".mock_compression",
     ):
         self._file_system = file_system
         self._extension = extension

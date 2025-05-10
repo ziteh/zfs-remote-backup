@@ -56,7 +56,7 @@ class MockEncryptor(EncryptionHandler):
         self,
         file_system: FileHandler,
         shutdown: bool = False,
-        extension: str = ".cry",
+        extension: str = ".mock_encryption",
     ) -> None:
         self._file_system = file_system
         self._extension = extension
