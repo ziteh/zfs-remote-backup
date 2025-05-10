@@ -101,27 +101,26 @@ class BackupTaskManager:
         try:
             match stage:
                 case "export":
-                    self.__handle_export()
+                    self.__handle_export_stage()
 
                 case "compress":
-                    self.__handle_compress(current)
+                    self.__handle_compress_stage(current)
 
                 case "encrypt":
-                    self.__handle_encrypt(current)
+                    self.__handle_encrypt_stage(current)
 
                 case "upload":
-                    self.__handle_update(current)
+                    self.__handle_update_stage(current)
 
                 case "done":
-                    snapshot_name = self.base.split("@")[-1]
-                    self.__snapshot_mgr.set_latest(self.pool, self.type, snapshot_name)
-                    self.__dequeue_backup_task()
+                    self.__handle_done_stage()
                     return  # all tasks are done
 
                 case _:
                     msg = f"Unknown stage {stage}"
                     logger.critical(msg)
                     raise ValueError(msg)
+
         except SystemShutdownError as e:
             logger.error(f"System is shutting down. {e}")
             return
@@ -129,14 +128,14 @@ class BackupTaskManager:
         if auto:
             self.run(True)
 
-    def __handle_export(self):
+    def __handle_export_stage(self):
         num_parts = self.__snapshot_mgr.export(
             self.pool, self.base, self.ref, str(self.temp_path)
         )
         self.__set_stage_export(num_parts)
         pass
 
-    def __handle_compress(self, index: int):
+    def __handle_compress_stage(self, index: int):
         filename = self.temp_path / f"{self.__snapshot_mgr.filename}{index:06}"
         compressed_filename = self.__compress_mgr.compress(str(filename))
         self.__set_stage_compress(index + 1)
@@ -147,7 +146,7 @@ class BackupTaskManager:
         self.__file_mgr.delete(str(filename))  # delete the original file
         self.__set_stage_compress(index + 1)
 
-    def __handle_encrypt(self, index: int):
+    def __handle_encrypt_stage(self, index: int):
         filename = self.temp_path / f"{self.__snapshot_mgr.filename}{index:06}"
         compressed_filename = str(filename) + self.__compress_mgr.extension
 
@@ -155,7 +154,7 @@ class BackupTaskManager:
         self.__file_mgr.delete(str(compressed_filename))  # delete the compressed file
         self.__set_stage_encrypt(index + 1)
 
-    def __handle_update(self, index: int):
+    def __handle_update_stage(self, index: int):
         filename = self.temp_path / (
             f"{self.__snapshot_mgr.filename}{index:06}"
             + self.__compress_mgr.extension
@@ -173,6 +172,11 @@ class BackupTaskManager:
         self.__set_stage_upload(index + 1)
         self.__file_mgr.delete(str(filename))  # delete the uploaded file
         self.__set_stage_remove(index + 1)
+
+    def __handle_done_stage(self):
+        snapshot_name = self.base.split("@")[-1]
+        self.__snapshot_mgr.set_latest(self.pool, self.type, snapshot_name)
+        self.__dequeue_backup_task()
 
     def __is_error_stage(self, current: int, total: int) -> bool:
         return total < 0 or current < 0
