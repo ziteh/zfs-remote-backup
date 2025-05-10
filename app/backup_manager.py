@@ -169,9 +169,8 @@ class BackupTaskManager:
         }
 
         self.__remote_mgr.upload(str(filename), str(filename), tags, metadata)
-        self.__set_stage_upload(index + 1)
         self.__file_mgr.delete(str(filename))  # delete the uploaded file
-        self.__set_stage_remove(index + 1)
+        self.__set_stage_upload(index + 1)
 
     def __handle_done_stage(self):
         snapshot_name = self.base.split("@")[-1]
@@ -222,7 +221,6 @@ class BackupTaskManager:
         self.__status.current.stage.compressed = 0
         self.__status.current.stage.encrypted = 0
         self.__status.current.stage.uploaded = 0
-        self.__status.current.stage.removed = 0
 
         # Set the snapshot
         snapshots = self.__snapshot_mgr.list(task.pool)
@@ -291,8 +289,4 @@ class BackupTaskManager:
 
     def __set_stage_upload(self, done: int):
         self.__status.current.stage.uploaded = done
-        self.__save_status()
-
-    def __set_stage_remove(self, done: int):
-        self.__status.current.stage.removed = done
         self.__save_status()

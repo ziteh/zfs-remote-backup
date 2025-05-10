@@ -69,7 +69,6 @@ class TestIntegration:
                     compressed=0,
                     encrypted=0,
                     uploaded=0,
-                    removed=0,
                 ),
             ),
         )

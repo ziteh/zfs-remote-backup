@@ -45,9 +45,6 @@ class Stage:
     uploaded: int
     """Number of uploaded files"""
 
-    removed: int
-    """Number of cleaned files"""
-
 
 @dataclass(slots=True)
 class CurrentTask:
@@ -96,7 +93,7 @@ class MsgpackBackupStatusIo(BackupStatusIo):
         if not self.__file_path.exists():
             # File not exists, create a new status
             status = BackupStatusRaw(
-                datetime.now(), [], CurrentTask("", "", 0, Stage(False, 0, 0, 0, 0))
+                datetime.now(), [], CurrentTask("", "", 0, Stage(False, 0, 0, 0))
             )
             self.save(status)
             return status
@@ -150,7 +147,6 @@ class MockBackupStatusIo(BackupStatusIo):
                         compressed=0,
                         encrypted=0,
                         uploaded=0,
-                        removed=0,
                     ),
                 ),
             )
