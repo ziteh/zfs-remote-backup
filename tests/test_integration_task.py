@@ -65,7 +65,7 @@ class TestIntegration:
                 ref="",
                 split_quantity=0,
                 stage=Stage(
-                    exported=False,
+                    snapshot_exported=False,
                     compressed=0,
                     encrypted=0,
                     uploaded=0,

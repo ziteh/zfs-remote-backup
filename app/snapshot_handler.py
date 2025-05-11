@@ -1,3 +1,4 @@
+import os
 import subprocess
 from abc import ABCMeta, abstractmethod
 from pathlib import Path
@@ -15,30 +16,34 @@ class SnapshotHandler(metaclass=ABCMeta):
     @abstractmethod
     def export(
         self,
-        pool: str,
+        dataset: str,
         base_snapshot: str,
         ref_snapshot: str | None,
-        output_dir: str,
-    ) -> int:
+        output_dir: Path,
+    ) -> Path:
         """Export snapshot.
 
         Args:
-            pool: The name of the ZFS pool.
+            dataset: The name of the ZFS dataset.
             base_snapshot: The base snapshot to export.
             ref_snapshot: The reference snapshot for incremental exports.
             output_dir: The directory where the output files will be saved.
 
         Returns:
-            The number of parts created during the export.
+            The exported file path.
         """
         raise NotImplementedError()
 
     @abstractmethod
-    def list(self, pool: str) -> list[str]:
-        """List all snapshots in the given ZFS pool.
+    def test(self, dataset: str, filepath: Path) -> bool:
+        raise NotImplementedError()
+
+    @abstractmethod
+    def list(self, dataset: str) -> list[str]:
+        """List all snapshots in the given ZFS dataset.
 
         Args:
-            pool: The name of the ZFS pool.
+            dataset: The name of the ZFS dataset.
 
         Returns:
             A list of snapshot names.
@@ -46,11 +51,11 @@ class SnapshotHandler(metaclass=ABCMeta):
         raise NotImplementedError()
 
     @abstractmethod
-    def get_latest(self, pool: str, type: BackupType) -> str | None:
-        """Get the latest snapshot in the given ZFS pool.
+    def get_latest(self, dataset: str, type: BackupType) -> str | None:
+        """Get the latest snapshot in the given ZFS dataset.
 
         Args:
-            pool: The name of the ZFS pool.
+            dataset: The name of the ZFS dataset.
             type: The type of backup.
 
         Returns:
@@ -59,11 +64,11 @@ class SnapshotHandler(metaclass=ABCMeta):
         raise NotImplementedError()
 
     @abstractmethod
-    def set_latest(self, pool: str, type: BackupType, snapshot: str) -> None:
-        """Set the latest snapshot in the given ZFS pool.
+    def set_latest(self, dataset: str, type: BackupType, snapshot: str) -> None:
+        """Set the latest snapshot in the given ZFS dataset.
 
         Args:
-            pool: The name of the ZFS pool.
+            dataset: The name of the ZFS dataset.
             type: The type of backup.
             snapshot: The name of the snapshot to set as latest.
         """
@@ -77,13 +82,13 @@ class ZfsSnapshotHandler(SnapshotHandler):
 
     def export(
         self,
-        pool: str,
+        dataset: str,
         base_snapshot: str,
         ref_snapshot: str | None,
-        output_dir: str,
-    ) -> int:
-        base_snapshot_str = f"{pool}@{base_snapshot}"
-        ref_snapshot_str = f"{pool}@{ref_snapshot}" if ref_snapshot else None
+        output_dir: Path,
+    ) -> Path:
+        base_snapshot_str = f"{dataset}@{base_snapshot}"
+        ref_snapshot_str = f"{dataset}@{ref_snapshot}" if ref_snapshot else None
 
         zfs_cmd = ["zfs", "send", base_snapshot_str]
         if ref_snapshot_str:
@@ -108,8 +113,8 @@ class ZfsSnapshotHandler(SnapshotHandler):
         split_files = list(output_path.glob(f"{self.filename}*"))
         return len(split_files)
 
-    def list(self, pool: str) -> list[str]:
-        cmd = ["zfs", "list", "-H", "-o", "name", "-t", "snapshot", pool]
+    def list(self, dataset: str) -> list[str]:
+        cmd = ["zfs", "list", "-H", "-o", "name", "-t", "snapshot", dataset]
         result = subprocess.run(cmd, capture_output=True, text=True)
         if result.returncode != 0:
             raise RuntimeError(f"Error listing snapshots: {result.stderr}")
@@ -118,10 +123,10 @@ class ZfsSnapshotHandler(SnapshotHandler):
         snapshots.reverse()
         return snapshots
 
-    def get_latest(self, pool: str, type: BackupType) -> str:
+    def get_latest(self, dataset: str, type: BackupType) -> str:
         return ""  # TODO
 
-    def set_latest(self, pool: str, type: BackupType, snapshot: str) -> None:
+    def set_latest(self, dataset: str, type: BackupType, snapshot: str) -> None:
         pass  # TODO
 
 
@@ -131,17 +136,12 @@ class MockSnapshotHandler(SnapshotHandler):
         file_system: FileHandler,
         shutdown: bool = False,
         snapshots: list[str] = [],
-        export_return: int = 3,
-        filename: str = "mock_snapshot_",
+        filename: str = "mock_snapshot.snp",
     ) -> None:
         self._filename = filename
         self._file_system = file_system
         self.shutdown = shutdown
-        self.export_return = export_return
         self.snapshots: list[str] = snapshots
-        self.export_calls: list[
-            dict[str, str]
-        ] = []  # keep track of calls for test assertions
 
     @property
     def filename(self) -> str:
@@ -149,33 +149,35 @@ class MockSnapshotHandler(SnapshotHandler):
 
     def export(
         self,
-        pool: str,
+        dataset: str,
         base_snapshot: str,
         ref_snapshot: str | None,
-        output_dir: str,
-    ) -> int:
+        output_dir: Path,
+    ) -> Path:
         if self.shutdown:
             raise RuntimeError("System is shutting down.")
 
-        output_path = Path(output_dir)
-        for i in range(self.export_return):
-            filename = f"{self._filename}{i:06}"
-            content = f"{pool}\n{base_snapshot}\n{ref_snapshot or 'NONE'}\n{i}"
-            self._file_system.save(output_path / filename, content)
+        filepath = output_dir / self.filename
+        # content = "\n".join([dataset, base_snapshot, ref_snapshot or "NONE"])
+        content = os.urandom(1024)
+        self._file_system.save(filepath, content)
 
-        return self.export_return
+        return filepath
 
-    def list(self, pool: str) -> list[str]:
+    def test(self, dataset: str, filepath: Path) -> bool:
+        return True
+
+    def list(self, dataset: str) -> list[str]:
         if self.shutdown:
             raise RuntimeError("System is shutting down.")
 
-        return [f"{pool}@{s}" for s in self.snapshots]
+        return [f"{dataset}@{s}" for s in self.snapshots]
 
-    def get_latest(self, pool: str, type: BackupType) -> str | None:
+    def get_latest(self, dataset: str, type: BackupType) -> str | None:
         if self.shutdown:
             raise RuntimeError("System is shutting down.")
 
-        latest_dir_path = Path(pool)
+        latest_dir_path = Path(dataset)
         full_path = latest_dir_path / self.__get_latest_filename(type)
         if not self._file_system.check(full_path):
             return None  # no latest snapshot
@@ -183,11 +185,11 @@ class MockSnapshotHandler(SnapshotHandler):
         latest_snapshot: str = self._file_system.read(full_path)
         return latest_snapshot if latest_snapshot else None  # empty file
 
-    def set_latest(self, pool: str, type: BackupType, snapshot: str) -> None:
+    def set_latest(self, dataset: str, type: BackupType, snapshot: str) -> None:
         if self.shutdown:
             raise RuntimeError("System is shutting down.")
 
-        latest_dir_path = Path(pool)
+        latest_dir_path = Path(dataset)
         full_path = latest_dir_path / self.__get_latest_filename(type)
         self._file_system.save(full_path, snapshot)
 

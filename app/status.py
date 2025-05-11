@@ -10,9 +10,14 @@ from app.define import BackupType
 from app.file_handler import FileHandler
 
 type BackupTaskStage = Literal[
-    "export",
+    "snapshot_export",
+    "snapshot_test",
+    "snapshot_hash",
     "compress",
+    "compress_test",
+    "compress_hash",
     "encrypt",
+    "decrypt",
     "upload",
     "done",
     # "error",
@@ -33,17 +38,34 @@ class Task:
 
 @dataclass(slots=True)
 class Stage:
-    exported: bool
+    snapshot_exported: str
     """Snapshot exported"""
+
+    snapshot_tested: bool
+
+    snapshot_hash: bytes
+
+    split: int
 
     compressed: int
     """Number of compressed files"""
 
+    compressed_test: int
+    """Number of compressed files for testing"""
+
+    compressed_hash: bytes
+
     encrypted: int
     """Number of encrypted files"""
 
+    encrypted_test: int
+
+    encrypted_hash: bytes
+
     uploaded: int
     """Number of uploaded files"""
+
+    cleared: int
 
 
 @dataclass(slots=True)
@@ -59,6 +81,8 @@ class CurrentTask:
 
     stage: Stage
     """Current stage of the backup task"""
+
+    stream_hash: bytes
 
 
 @dataclass(slots=True)
@@ -143,7 +167,7 @@ class MockBackupStatusIo(BackupStatusIo):
                     ref="__ref",
                     split_quantity=0,
                     stage=Stage(
-                        exported=False,
+                        snapshot_exported=False,
                         compressed=0,
                         encrypted=0,
                         uploaded=0,

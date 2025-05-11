@@ -182,7 +182,7 @@ class BackupTaskManager:
 
     def __get_stage(self) -> tuple[BackupTaskStage, int, int]:
         stage = self.__status.current.stage
-        if not stage.exported:
+        if not stage.snapshot_exported:
             return ("export", 0, 0)
 
         split_qty = self.__status.current.split_quantity
@@ -217,7 +217,7 @@ class BackupTaskManager:
 
         # Clear the task status
         self.__status.current.split_quantity = 0
-        self.__status.current.stage.exported = False
+        self.__status.current.stage.snapshot_exported = False
         self.__status.current.stage.compressed = 0
         self.__status.current.stage.encrypted = 0
         self.__status.current.stage.uploaded = 0
@@ -271,10 +271,10 @@ class BackupTaskManager:
         """
 
         if parts is None:
-            self.__status.current.stage.exported = False
+            self.__status.current.stage.snapshot_exported = False
             self.__status.current.split_quantity = 0
         else:
-            self.__status.current.stage.exported = True
+            self.__status.current.stage.snapshot_exported = True
             self.__status.current.split_quantity = parts
 
         self.__save_status()

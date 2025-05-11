@@ -16,7 +16,7 @@ class TestStage:
                 ref="incr",
                 split_quantity=3,
                 stage=Stage(
-                    exported=False,
+                    snapshot_exported=False,
                     compressed=0,
                     compress_tested=0,
                     encrypted=0,
@@ -29,7 +29,7 @@ class TestStage:
     def test_check_stage_export(self, default_status: BackupStatusRaw):
         """export stage"""
         default_status.current.stage = Stage(
-            exported=False,
+            snapshot_exported=False,
             compressed=0,
             compress_tested=0,
             encrypted=0,
@@ -46,7 +46,7 @@ class TestStage:
     def test_check_stage_compress(self, default_status: BackupStatusRaw):
         """compress stage"""
         default_status.current.stage = Stage(
-            exported=True,
+            snapshot_exported=True,
             compressed=0,
             compress_tested=0,
             encrypted=0,
@@ -63,7 +63,7 @@ class TestStage:
     def test_check_stage_compress_error(self, default_status: BackupStatusRaw):
         """compress stage error"""
         default_status.current.stage = Stage(
-            exported=True,
+            snapshot_exported=True,
             compressed=default_status.current.split_quantity + 1,
             compress_tested=0,
             encrypted=0,
@@ -79,7 +79,7 @@ class TestStage:
     def test_check_stage_compress_test(self, default_status: BackupStatusRaw):
         """compress test stage"""
         default_status.current.stage = Stage(
-            exported=True,
+            snapshot_exported=True,
             compressed=default_status.current.split_quantity,
             compress_tested=0,
             encrypted=0,
@@ -96,7 +96,7 @@ class TestStage:
     def test_check_stage_compress_test_error(self, default_status: BackupStatusRaw):
         """compress test stage error"""
         default_status.current.stage = Stage(
-            exported=True,
+            snapshot_exported=True,
             compressed=default_status.current.split_quantity,
             compress_tested=default_status.current.split_quantity + 1,
             encrypted=0,
@@ -112,7 +112,7 @@ class TestStage:
     def test_check_stage_encrypt(self, default_status: BackupStatusRaw):
         """encrypt stage"""
         default_status.current.stage = Stage(
-            exported=True,
+            snapshot_exported=True,
             compressed=default_status.current.split_quantity,
             compress_tested=default_status.current.split_quantity,
             encrypted=0,
@@ -129,7 +129,7 @@ class TestStage:
     def test_check_stage_encrypt_error(self, default_status: BackupStatusRaw):
         """encrypt stage error"""
         default_status.current.stage = Stage(
-            exported=True,
+            snapshot_exported=True,
             compressed=default_status.current.split_quantity,
             compress_tested=default_status.current.split_quantity,
             encrypted=default_status.current.split_quantity + 1,
@@ -145,7 +145,7 @@ class TestStage:
     def test_check_stage_upload(self, default_status: BackupStatusRaw):
         """upload stage"""
         default_status.current.stage = Stage(
-            exported=True,
+            snapshot_exported=True,
             compressed=default_status.current.split_quantity,
             compress_tested=default_status.current.split_quantity,
             encrypted=default_status.current.split_quantity,
@@ -162,7 +162,7 @@ class TestStage:
     def test_check_stage_upload_error(self, default_status: BackupStatusRaw):
         """upload stage error"""
         default_status.current.stage = Stage(
-            exported=True,
+            snapshot_exported=True,
             compressed=default_status.current.split_quantity,
             compress_tested=default_status.current.split_quantity,
             encrypted=default_status.current.split_quantity,
@@ -178,7 +178,7 @@ class TestStage:
     def test_check_stage_remove(self, default_status: BackupStatusRaw):
         """remove stage"""
         default_status.current.stage = Stage(
-            exported=True,
+            snapshot_exported=True,
             compressed=default_status.current.split_quantity,
             compress_tested=default_status.current.split_quantity,
             encrypted=default_status.current.split_quantity,
@@ -195,7 +195,7 @@ class TestStage:
     def test_check_stage_remove_error(self, default_status: BackupStatusRaw):
         """remove stage error"""
         default_status.current.stage = Stage(
-            exported=True,
+            snapshot_exported=True,
             compressed=default_status.current.split_quantity,
             compress_tested=default_status.current.split_quantity,
             encrypted=default_status.current.split_quantity,
@@ -211,7 +211,7 @@ class TestStage:
     def test_check_stage_done(self, default_status: BackupStatusRaw):
         """all done"""
         default_status.current.stage = Stage(
-            exported=True,
+            snapshot_exported=True,
             compressed=default_status.current.split_quantity,
             compress_tested=default_status.current.split_quantity,
             encrypted=default_status.current.split_quantity,

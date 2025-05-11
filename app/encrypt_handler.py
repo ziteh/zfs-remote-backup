@@ -1,3 +1,4 @@
+from pathlib import Path
 import subprocess
 from abc import ABCMeta, abstractmethod
 
@@ -11,7 +12,7 @@ class EncryptionHandler(metaclass=ABCMeta):
         raise NotImplementedError()
 
     @abstractmethod
-    def encrypt(self, filename: str) -> str:
+    def encrypt(self, filepath: Path) -> str:
         """Encrypts the given filename using the specified encryption method.
 
         Args:
@@ -20,6 +21,9 @@ class EncryptionHandler(metaclass=ABCMeta):
         Returns:
             The name of the encrypted file.
         """
+        raise NotImplementedError()
+
+    def test(self, filepath: Path) -> bool:
         raise NotImplementedError()
 
 
@@ -66,13 +70,16 @@ class MockEncryptor(EncryptionHandler):
     def extension(self) -> str:
         return self._extension
 
-    def encrypt(self, filename: str) -> str:
+    def encrypt(self, filepath: Path) -> str:
         if self.shutdown:
             raise RuntimeError("System is shutting down.")
 
-        if not self._file_system.check(filename):
-            raise FileNotFoundError(f"File '{filename}' not found.")
+        if not self._file_system.check(filepath):
+            raise FileNotFoundError(f"File '{filepath}' not found.")
 
-        new_filename = f"{filename}{self.extension}"
-        self._file_system.save(new_filename, self._file_system.read(filename))
-        return new_filename
+        new_file = filepath.with_suffix(filepath.suffix + self.extension)
+        self._file_system.save(new_file, self._file_system.read(filepath))
+        return new_file.name
+
+    def test(self, filepath: Path) -> bool:
+        return True

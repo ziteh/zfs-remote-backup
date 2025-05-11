@@ -1,3 +1,4 @@
+from pathlib import Path
 import subprocess
 from abc import ABCMeta, abstractmethod
 
@@ -11,23 +12,23 @@ class CompressionHandler(metaclass=ABCMeta):
         raise NotImplementedError()
 
     @abstractmethod
-    def compress(self, filename: str) -> str:
-        """Compresses the given filename using the specified compression method.
+    def compress(self, filepath: Path) -> Path:
+        """Compresses the given file path using the specified compression method.
 
         Args:
-            filename: The name of the file to compress.
+            filepath: The file to compress.
 
         Returns:
-            The name of the compressed file.
+            The compressed file.
         """
         raise NotImplementedError()
 
     @abstractmethod
-    def verify(self, filename: str) -> bool:
+    def verify(self, filepath: Path) -> bool:
         """Tests the integrity of the compressed file.
 
         Args:
-            filename: The name of the compressed file to test.
+            filepath: The compressed file to test.
 
         Returns:
             `True` if the test is successful, `False` otherwise.
@@ -88,19 +89,19 @@ class MockCompressionHandler(CompressionHandler):
     def extension(self) -> str:
         return self._extension
 
-    def compress(self, filename: str) -> str:
+    def compress(self, filepath: Path) -> Path:
         if self.shutdown:
             raise RuntimeError("System is shutting down.")
 
-        if not self._file_system.check(filename):
-            raise FileNotFoundError(f"File '{filename}' not found.")
+        if not self._file_system.check(filepath):
+            raise FileNotFoundError(f"File '{filepath}' not found.")
 
-        new_filename = f"{filename}{self.extension}"
-        self._file_system.save(new_filename, self._file_system.read(filename))
+        new_filename = filepath.with_suffix(filepath.suffix + self.extension)
+        self._file_system.save(new_filename, self._file_system.read(filepath))
         return new_filename
 
-    def verify(self, filename: str) -> bool:
+    def verify(self, filepath: Path) -> bool:
         if self.shutdown:
             raise RuntimeError("System is shutting down.")
 
-        return self._file_system.check(filename)  # just check file exist
+        return self._file_system.check(filepath)  # just check file exist
