@@ -1,9 +1,16 @@
 from abc import ABCMeta, abstractmethod
+from pathlib import Path
+
+from app.file_handler import FileHandler
 
 
 class Hasher(metaclass=ABCMeta):
     @abstractmethod
     def update(self, data: bytes) -> None:
+        raise NotImplementedError()
+
+    @abstractmethod
+    def cal_file(self, filepath: Path) -> None:
         raise NotImplementedError()
 
     @abstractmethod
@@ -23,12 +30,21 @@ class Hasher(metaclass=ABCMeta):
 
 class SumHasher(Hasher):
     _sum: int
+    _file_system: FileHandler
 
-    def __init__(self) -> None:
+    def __init__(self, file_system: FileHandler) -> None:
+        self._file_system = file_system
         self.reset()
 
     def update(self, data: bytes) -> None:
         self._sum = (self._sum + sum(data)) % 2**32
+
+    def cal_file(self, filepath: Path) -> None:
+        if not self._file_system.check_file(filepath):
+            raise FileNotFoundError(f"File '{filepath}' not found.")
+
+        data = self._file_system.read(filepath)
+        self.update(data)
 
     def reset(self) -> None:
         self._sum = 0

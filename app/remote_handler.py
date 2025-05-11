@@ -1,4 +1,5 @@
 from abc import ABCMeta, abstractmethod
+from pathlib import Path
 from typing import Any
 
 import boto3
@@ -12,17 +13,16 @@ class RemoteStorageHandler(metaclass=ABCMeta):
     @abstractmethod
     def upload(
         self,
-        filename: str,
-        key: str,
+        src_filepath: Path,
+        dest_filepath: Path,
         tags: dict[str, str] | None,
         metadata: dict[str, str] | None,
     ) -> None:
         """Uploads a file to the remote storage.
 
         Args:
-            filename: The name of the file to upload.
-            bucket: The name of the remote bucket.
-            key: The key under which to store the file.
+            src_filepath: The path to the source file.
+            dest_filepath: The path to the destination file.
             tags: Optional tags.
             metadata: Optional metadata.
         """
@@ -43,20 +43,20 @@ class MockRemoteStorageHandler(RemoteStorageHandler):
 
     def upload(
         self,
-        filename: str,
-        key: str,
+        src_filepath: Path,
+        dest_filepath: Path,
         tags: dict[str, str] | None,
         metadata: dict[str, str] | None,
     ) -> None:
         if self.shutdown:
             raise RuntimeError("System is shutting down.")
 
-        if not self._file_system.check(filename):
-            raise FileNotFoundError(f"File '{filename}' not found.")
+        if not self._file_system.check_file(src_filepath):
+            raise FileNotFoundError(f"File '{src_filepath}' not found.")
 
-        target = f"{self.bucket}:{key}"
+        target = f"{self.bucket}:{dest_filepath}"
         self.objects[target] = {
-            "content": self._file_system.read(filename),
+            "content": self._file_system.read(src_filepath),
             "tags": tags,
             "metadata": metadata,
         }

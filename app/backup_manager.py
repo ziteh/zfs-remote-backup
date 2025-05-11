@@ -6,287 +6,273 @@ from loguru import logger
 from app.compress_handler import CompressionHandler
 from app.define import TEMP_DIR, BackupType, SystemShutdownError
 from app.encrypt_handler import EncryptionHandler
+from app.extract_handler import Splitter
 from app.file_handler import FileHandler
+from app.hash_handler import Hasher
 from app.remote_handler import RemoteStorageHandler
 from app.snapshot_handler import SnapshotHandler
-from app.status import (
-    BackupStatusIo,
-    BackupStatusRaw,
-    BackupTaskStage,
-    Task,
-)
+from app.status_manager import StatusManager
 
 
 class BackupTaskManager:
-    __snapshot_mgr: SnapshotHandler
-    __remote_mgr: RemoteStorageHandler
-    __compress_mgr: CompressionHandler
-    __encrypt_mgr: EncryptionHandler
-    __file_mgr: FileHandler
-
-    __status: BackupStatusRaw
-    __status_manager: BackupStatusIo
-
     def __init__(
         self,
-        status_io: BackupStatusIo,
+        status_io: StatusManager,
         snapshot_handler: SnapshotHandler,
+        splitter: Splitter,
         remote_handler: RemoteStorageHandler,
         compression_handler: CompressionHandler,
         encryption_handler: EncryptionHandler,
         file_handler: FileHandler,
+        local_hasher: Hasher,
+        remote_hasher: Hasher,
     ):
         self.__snapshot_mgr = snapshot_handler
         self.__remote_mgr = remote_handler
         self.__compress_mgr = compression_handler
         self.__encrypt_mgr = encryption_handler
         self.__file_mgr = file_handler
+        self.__splitter = splitter
+
+        self.__local_hasher = local_hasher
+        self.__remote_hasher = remote_hasher
 
         self.__status_manager = status_io
-        self.__status = status_io.load()
-        self.__load_backup_task()
 
     @property
-    def pool(self) -> str:
-        """ZFS pool"""
-        # self.__status = self.__status_manager.load()
-        return self.__status.queue[0].pool
+    def dataset(self) -> str:
+        """ZFS dataset"""
+        return self.__status_manager.task_queue.tasks[0].dataset
 
     @property
     def type(self) -> BackupType:
         """Backup type"""
-        # self.__status = self.__status_manager.load()
-        return self.__status.queue[0].type
+        return self.__status_manager.task_queue.tasks[0].type
 
     @property
     def date(self) -> datetime:
         """Target date"""
-        # self.__status = self.__status_manager.load()
-        return self.__status.queue[0].date
+        return self.__status_manager.task_queue.tasks[0].date
 
     @property
     def base(self) -> str:
         """Base snapshot"""
-        # self.__status = self.__status_manager.load()
-        return self.__status.current.base
+        return self.__status_manager.current_task.base
 
     @property
     def ref(self) -> str:
         """Ref snapshot"""
-        # self.__status = self.__status_manager.load()
-        return self.__status.current.ref
+        return self.__status_manager.current_task.ref
 
     @property
-    def is_no_task(self) -> bool:
-        # self.__status = self.__status_manager.load()
-        return len(self.__status.queue) == 0
+    def are_tasks_available(self) -> bool:
+        return len(self.__status_manager.task_queue.tasks) != 0
 
     @property
-    def temp_path(self) -> Path:
+    def temp_dir(self) -> Path:
         """Get the temporary path for the backup task."""
         return (
-            Path(TEMP_DIR) / self.pool / f"{self.type}_{self.date.strftime('%Y-%m-%d')}"
+            Path(TEMP_DIR)
+            / self.dataset
+            / f"{self.type}_{self.date.strftime('%Y-%m-%d')}"
         )
 
     def run(self, auto: bool = False) -> None:
-        if self.is_no_task:
-            return
+        while self.are_tasks_available:
+            (stage, total, current) = self.__status_manager.restore_status()
 
-        (stage, current, total) = self.__get_stage()
+            if self.__is_error_stage(current, total):
+                logger.error(
+                    f"Error in stage: {stage}, current: {current}, total: {total}"
+                )
+                return
 
-        if self.__is_error_stage(current, total):
-            logger.error(f"Error in stage: {stage}, current: {current}, total: {total}")
-            return
+            try:
+                match stage:
+                    case "snapshot_export":
+                        self.__handle_export_stage()
 
-        try:
-            match stage:
-                case "export":
-                    self.__handle_export_stage()
+                    case "snapshot_test":
+                        self.__handle_export_test_stage()
 
-                case "compress":
-                    self.__handle_compress_stage(current)
+                    case "snapshot_hash":
+                        self.__handle_export_hash_stage()
 
-                case "encrypt":
-                    self.__handle_encrypt_stage(current)
+                    case "split":
+                        self.__handle_split_stage(current)
 
-                case "upload":
-                    self.__handle_update_stage(current)
+                    case "compress":
+                        self.__handle_compress_stage(current)
 
-                case "done":
-                    self.__handle_done_stage()
-                    return  # all tasks are done
+                    case "compress_test":
+                        self.__handle_compress_test_stage(current)
+                        pass
 
-                case _:
-                    msg = f"Unknown stage {stage}"
-                    logger.critical(msg)
-                    raise ValueError(msg)
+                    case "compress_hash":
+                        self.__handle_compress_hash_stage(current)
+                        pass
 
-        except SystemShutdownError as e:
-            logger.error(f"System is shutting down. {e}")
-            return
+                    case "encrypt":
+                        self.__handle_encrypt_stage(current)
 
-        if auto:
-            self.run(True)
+                    case "encrypt_test":
+                        self.__handle_encrypt_test_stage(current)
+                        pass
+
+                    case "encrypt_hash":
+                        self.__handle_encrypt_hash_stage(current)
+                        pass
+
+                    case "upload":
+                        self.__handle_update_stage(current)
+
+                    case "clear":
+                        self.__handle_clear_stage(current)
+
+                    case "done":
+                        self.__handle_done_stage()
+
+                    case _:
+                        msg = f"Unknown stage {stage}"
+                        logger.critical(msg)
+                        raise ValueError(msg)
+
+            except SystemShutdownError as e:
+                logger.error(f"System is shutting down. {e}")
+                return
+
+            if not auto:
+                break
 
     def __handle_export_stage(self):
-        num_parts = self.__snapshot_mgr.export(
-            self.pool, self.base, self.ref, str(self.temp_path)
+        save_filepath = self.__snapshot_mgr.export(
+            self.temp_dir,
+            self.dataset,
+            self.base,
+            self.ref,
         )
-        self.__set_stage_export(num_parts)
-        pass
+
+        # calculate the split quantity
+        file_size = self.__file_mgr.get_file_size(save_filepath)
+        split_quantity = file_size // self.__splitter.chunk_size
+        self.__status_manager.update_split_quantity(split_quantity)
+
+        self.__status_manager.update_stage("snapshot_export", save_filepath.name)
+
+    def __handle_export_test_stage(self):
+        ok = self.__snapshot_mgr.verify(self.dataset, self.temp_dir)
+        self.__status_manager.update_stage("snapshot_test", ok)
+
+    def __handle_export_hash_stage(self):
+        snapshot_filepath = self.temp_dir / self.__snapshot_mgr.filename
+        self.__local_hasher.reset()
+        self.__local_hasher.cal_file(snapshot_filepath)
+        hash = self.__local_hasher.digest
+        self.__status_manager.update_stage("snapshot_hash", hash)
+
+    def __handle_split_stage(self, index: int):
+        snapshot_filepath = self.temp_dir / self.__snapshot_mgr.filename
+        in_hash = (
+            self.__status_manager.current_task.stage.spited[-1] if index > 0 else b""
+        )
+
+        out_hash = self.__splitter.split(snapshot_filepath, index, in_hash)
+
+        self.__status_manager.update_stage("split", out_hash)
 
     def __handle_compress_stage(self, index: int):
-        filename = self.temp_path / f"{self.__snapshot_mgr.filename}{index:06}"
-        compressed_filename = self.__compress_mgr.compress(str(filename))
-        self.__set_stage_compress(index + 1)
+        split_filepath = self.temp_dir / (
+            self.__snapshot_mgr.filename + self.__splitter.extension(index)
+        )
+        self.__compress_mgr.compress(split_filepath)
+        self.__status_manager.update_stage("compress", index)
 
-        if not self.__compress_mgr.verify(compressed_filename):
-            raise RuntimeError(f"Compression failed for {compressed_filename}")
+    def __handle_compress_test_stage(self, index: int):
+        split_filepath = self.temp_dir / (
+            self.__snapshot_mgr.filename + self.__splitter.extension(index)
+        )
+        ok = self.__compress_mgr.verify(split_filepath)
+        self.__status_manager.update_stage("compress_test", ok)
+        if ok:
+            self.__file_mgr.delete(split_filepath)
 
-        self.__file_mgr.delete(str(filename))  # delete the original file
-        self.__set_stage_compress(index + 1)
+    def __handle_compress_hash_stage(self, index: int):
+        split_filepath = self.temp_dir / (
+            self.__snapshot_mgr.filename + self.__splitter.extension(index)
+        )
+        self.__local_hasher.reset()
+        self.__local_hasher.cal_file(split_filepath)
+        hash = self.__local_hasher.digest
+        self.__status_manager.update_stage("compress_hash", hash)
 
     def __handle_encrypt_stage(self, index: int):
-        filename = self.temp_path / f"{self.__snapshot_mgr.filename}{index:06}"
-        compressed_filename = str(filename) + self.__compress_mgr.extension
+        compressed_filepath = self.temp_dir / (
+            self.__snapshot_mgr.filename
+            + self.__splitter.extension(index)
+            + self.__compress_mgr.extension
+        )
 
-        _encrypted_filename = self.__encrypt_mgr.encrypt(compressed_filename)
-        self.__file_mgr.delete(str(compressed_filename))  # delete the compressed file
-        self.__set_stage_encrypt(index + 1)
+        self.__encrypt_mgr.encrypt(compressed_filepath)
+        self.__status_manager.update_stage("encrypt", index)
+
+    def __handle_encrypt_test_stage(self, index: int):
+        compressed_filepath = self.temp_dir / (
+            self.__snapshot_mgr.filename
+            + self.__splitter.extension(index)
+            + self.__compress_mgr.extension
+        )
+
+        ori_hash = self.__status_manager.current_task.stage.compressed_hash
+        ok = self.__encrypt_mgr.verify(
+            compressed_filepath, ori_hash, self.__local_hasher
+        )
+        self.__status_manager.update_stage("encrypt_test", ok)
+        if ok:
+            self.__file_mgr.delete(compressed_filepath)
+
+    def __handle_encrypt_hash_stage(self, index: int):
+        compressed_filepath = self.temp_dir / (
+            self.__snapshot_mgr.filename
+            + self.__splitter.extension(index)
+            + self.__compress_mgr.extension
+        )
+
+        self.__remote_hasher.reset()
+        self.__remote_hasher.cal_file(compressed_filepath)
+        hash = self.__remote_hasher.digest
+        self.__status_manager.update_stage("encrypt_hash", hash)
 
     def __handle_update_stage(self, index: int):
-        filename = self.temp_path / (
-            f"{self.__snapshot_mgr.filename}{index:06}"
+        encrypted_filepath = self.temp_dir / (
+            self.__snapshot_mgr.filename
+            + self.__splitter.extension(index)
             + self.__compress_mgr.extension
             + self.__encrypt_mgr.extension
         )
 
         tags = {"backup-type": self.type}
         metadata = {
-            "pool": self.pool,
+            "dataset": self.dataset,
             "base-snapshot": self.base,
             "ref-snapshot": self.ref,
         }
 
-        self.__remote_mgr.upload(str(filename), str(filename), tags, metadata)
-        self.__file_mgr.delete(str(filename))  # delete the uploaded file
-        self.__set_stage_upload(index + 1)
+        self.__remote_mgr.upload(encrypted_filepath, encrypted_filepath, tags, metadata)
+        self.__status_manager.update_stage("upload", index)
+
+    def __handle_clear_stage(self, index: int):
+        encrypted_filepath = self.temp_dir / (
+            self.__snapshot_mgr.filename
+            + self.__splitter.extension(index)
+            + self.__compress_mgr.extension
+            + self.__encrypt_mgr.extension
+        )
+        self.__file_mgr.delete(encrypted_filepath)
+        self.__status_manager.update_stage("clear", index)
 
     def __handle_done_stage(self):
-        snapshot_name = self.base.split("@")[-1]
-        self.__snapshot_mgr.set_latest(self.pool, self.type, snapshot_name)
-        self.__dequeue_backup_task()
+        self.__status_manager.update_latest_snapshot(self.dataset, self.type, self.base)
+        self.__status_manager.dequeue_task()  # next task
 
     def __is_error_stage(self, current: int, total: int) -> bool:
         return total < 0 or current < 0
-
-    def __get_stage(self) -> tuple[BackupTaskStage, int, int]:
-        stage = self.__status.current.stage
-        if not stage.snapshot_exported:
-            return ("export", 0, 0)
-
-        split_qty = self.__status.current.split_quantity
-        if split_qty <= 0:
-            return ("export", -1, split_qty)  # error
-
-        if stage.compressed > split_qty:
-            return ("compress", -stage.compressed, -split_qty)  # error
-        elif stage.compressed < split_qty:
-            return ("compress", stage.compressed, split_qty)
-
-        if stage.encrypted > split_qty:
-            return ("encrypt", -stage.encrypted, -split_qty)  # error
-        elif stage.encrypted < split_qty:
-            return ("encrypt", stage.encrypted, split_qty)
-
-        if stage.uploaded > split_qty:
-            return ("upload", -stage.uploaded, -split_qty)  # error
-        elif stage.uploaded < split_qty:
-            return ("upload", stage.uploaded, split_qty)
-
-        return ("done", 0, split_qty)
-
-    def __save_status(self) -> None:
-        self.__status_manager.save(self.__status)
-
-    def __load_backup_task(self) -> Task | None:
-        if len(self.__status.queue) == 0:
-            return None
-
-        task = self.__status.queue[0]
-
-        # Clear the task status
-        self.__status.current.split_quantity = 0
-        self.__status.current.stage.snapshot_exported = False
-        self.__status.current.stage.compressed = 0
-        self.__status.current.stage.encrypted = 0
-        self.__status.current.stage.uploaded = 0
-
-        # Set the snapshot
-        snapshots = self.__snapshot_mgr.list(task.pool)
-        self.__status.current.base = snapshots[0]
-
-        match task.type:
-            case "full":
-                # Full backup, no reference snapshot
-                self.__status.current.ref = ""
-
-            case "diff":
-                # Differential backup, use the latest full snapshot as reference
-                self.__status.current.ref = (
-                    self.__snapshot_mgr.get_latest(task.pool, "full") or "ERROR_NONE"
-                )
-
-            case "incr":
-                # Incremental backup, use the latest differential snapshot as reference
-                self.__status.current.ref = (
-                    self.__snapshot_mgr.get_latest(task.pool, "diff") or "ERROR_NONE"
-                )
-
-            case _:
-                msg = f"Unknown backup type: {task.type}"
-                raise ValueError(msg)
-
-        return task
-
-    def enqueue_backup_task(self, task: Task) -> int:
-        self.__status.queue.append(task)
-        self.__save_status()
-        return len(self.__status.queue)
-
-    def __dequeue_backup_task(self) -> int:
-        if len(self.__status.queue) == 0:
-            return 0
-
-        _task = self.__status.queue.pop(0)
-        self.__load_backup_task()
-        self.__save_status()
-        return len(self.__status.queue)
-
-    def __set_stage_export(self, parts: int | None):
-        """Sets the export stage of the backup status.
-
-        Args:
-            parts: Number of parts export and split. `None` if not exported.
-        """
-
-        if parts is None:
-            self.__status.current.stage.snapshot_exported = False
-            self.__status.current.split_quantity = 0
-        else:
-            self.__status.current.stage.snapshot_exported = True
-            self.__status.current.split_quantity = parts
-
-        self.__save_status()
-
-    def __set_stage_compress(self, done: int):
-        self.__status.current.stage.compressed = done
-        self.__save_status()
-
-    def __set_stage_encrypt(self, done: int):
-        self.__status.current.stage.encrypted = done
-        self.__save_status()
-
-    def __set_stage_upload(self, done: int):
-        self.__status.current.stage.uploaded = done
-        self.__save_status()

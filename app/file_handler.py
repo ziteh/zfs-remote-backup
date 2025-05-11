@@ -23,7 +23,11 @@ class FileHandler(metaclass=ABCMeta):
         raise NotImplementedError()
 
     @abstractmethod
-    def check(self, filename: str | Path) -> bool:
+    def check_file(self, filename: str | Path) -> bool:
+        raise NotImplementedError()
+
+    @abstractmethod
+    def get_file_size(self, filepath: Path) -> int:
         raise NotImplementedError()
 
     @abstractmethod
@@ -39,32 +43,42 @@ class OsFileHandler(FileHandler):
 
 
 class MockFileSystem(FileHandler):
-    file_system: dict[str, Any] = {}
+    files: dict[str, Any] = {}
 
     def save(self, filename: str | Path, content: Any) -> None:
         file = str(filename)
-        self.file_system[file] = content
+        self.files[file] = content
 
     def read(self, filename: str | Path) -> Any:
         file = str(filename)
-        if file in self.file_system:
-            return self.file_system[file]
+        if file in self.files:
+            return self.files[file]
         else:
             raise FileNotFoundError(f"File '{filename}' not found.")
 
     def delete(self, filename: str | Path) -> None:
         file = str(filename)
-        if file in self.file_system:
-            del self.file_system[file]
+        if file in self.files:
+            del self.files[file]
         else:
             raise FileNotFoundError(f"File '{filename}' not found.")
 
-    def check(self, filename: str | Path) -> bool:
+    def check_file(self, filename: str | Path) -> bool:
         file = str(filename)
-        return file in self.file_system
+        return file in self.files
+
+    def get_file_size(self, filepath: Path) -> int:
+        try:
+            file = self.files[str(filepath)]
+            if file is None:
+                return -1
+
+            return len(file)
+        except KeyError:
+            return -1
 
     def clear(self) -> None:
-        self.file_system.clear()
+        self.files.clear()
 
     def print(self) -> None:
-        print(self.file_system)
+        print(self.files)

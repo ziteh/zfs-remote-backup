@@ -12,7 +12,7 @@ class CompressionHandler(metaclass=ABCMeta):
         raise NotImplementedError()
 
     @abstractmethod
-    def compress(self, filepath: Path) -> Path:
+    def compress(self, filepath: Path) -> None:
         """Compresses the given file path using the specified compression method.
 
         Args:
@@ -78,30 +78,20 @@ class MockCompressionHandler(CompressionHandler):
     def __init__(
         self,
         file_system: FileHandler,
-        shutdown: bool = False,
-        extension: str = ".mock_compression",
     ):
         self._file_system = file_system
-        self._extension = extension
-        self.shutdown = shutdown
 
     @property
     def extension(self) -> str:
-        return self._extension
+        return ".mock_cmp"
 
-    def compress(self, filepath: Path) -> Path:
-        if self.shutdown:
-            raise RuntimeError("System is shutting down.")
-
-        if not self._file_system.check(filepath):
+    def compress(self, filepath: Path) -> None:
+        if not self._file_system.check_file(filepath):
             raise FileNotFoundError(f"File '{filepath}' not found.")
 
-        new_filename = filepath.with_suffix(filepath.suffix + self.extension)
-        self._file_system.save(new_filename, self._file_system.read(filepath))
-        return new_filename
+        ori_data = self._file_system.read(filepath)
+        out_filepath = filepath.with_suffix(filepath.suffix + self.extension)
+        self._file_system.save(out_filepath, ori_data)
 
     def verify(self, filepath: Path) -> bool:
-        if self.shutdown:
-            raise RuntimeError("System is shutting down.")
-
-        return self._file_system.check(filepath)  # just check file exist
+        return self._file_system.check_file(filepath)  # just check file exist

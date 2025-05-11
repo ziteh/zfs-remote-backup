@@ -6,7 +6,7 @@ import pytest
 from app.backup_manager import BackupTaskManager
 from app.compress_handler import CompressionHandler, MockCompressionHandler
 from app.define import BackupType
-from app.encrypt_handler import EncryptionHandler, MockEncryptor
+from app.encrypt_handler import Splitter, MockEncryptor
 from app.file_handler import MockFileSystem
 from app.remote_handler import MockRemoteStorageHandler, RemoteStorageHandler
 from app.snapshot_handler import MockSnapshotHandler, SnapshotHandler
@@ -112,17 +112,17 @@ class TestIntegration:
         file_system: MockFileSystem,
         snapshot_handler: SnapshotHandler,
         compressor: CompressionHandler,
-        encryptor: EncryptionHandler,
+        encryptor: Splitter,
         remote: RemoteStorageHandler,
         split_count: int,
     ):
         # check status file
-        assert file_system.check("status.txt") is True
+        assert file_system.check_file("status.txt") is True
 
         # export
         backup_mgr.run(False)
         exported_files = [
-            f for f in file_system.file_system if snapshot_handler.filename in f
+            f for f in file_system.files if snapshot_handler.filename in f
         ]
         assert len(exported_files) == split_count
 
@@ -130,7 +130,7 @@ class TestIntegration:
         for _ in range(split_count):
             backup_mgr.run(False)
         compressed_files = [
-            f for f in file_system.file_system if compressor.extension in f
+            f for f in file_system.files if compressor.extension in f
         ]
         assert len(compressed_files) == split_count
 
@@ -139,7 +139,7 @@ class TestIntegration:
             backup_mgr.run(False)
         encrypted_files = [
             f
-            for f in file_system.file_system
+            for f in file_system.files
             if (compressor.extension + encryptor.extension) in f
         ]
         assert len(encrypted_files) == split_count

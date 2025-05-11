@@ -3,6 +3,7 @@ import subprocess
 from abc import ABCMeta, abstractmethod
 
 from app.file_handler import FileHandler
+from app.hash_handler import Hasher
 
 
 class EncryptionHandler(metaclass=ABCMeta):
@@ -12,7 +13,7 @@ class EncryptionHandler(metaclass=ABCMeta):
         raise NotImplementedError()
 
     @abstractmethod
-    def encrypt(self, filepath: Path) -> str:
+    def encrypt(self, filepath: Path) -> None:
         """Encrypts the given filename using the specified encryption method.
 
         Args:
@@ -23,7 +24,7 @@ class EncryptionHandler(metaclass=ABCMeta):
         """
         raise NotImplementedError()
 
-    def test(self, filepath: Path) -> bool:
+    def verify(self, filepath: Path, ori_hash: bytes, hasher: Hasher) -> bool:
         raise NotImplementedError()
 
 
@@ -59,27 +60,20 @@ class MockEncryptor(EncryptionHandler):
     def __init__(
         self,
         file_system: FileHandler,
-        shutdown: bool = False,
-        extension: str = ".mock_encryption",
     ) -> None:
         self._file_system = file_system
-        self._extension = extension
-        self.shutdown = shutdown
 
     @property
     def extension(self) -> str:
-        return self._extension
+        return ".mock_cry"
 
-    def encrypt(self, filepath: Path) -> str:
-        if self.shutdown:
-            raise RuntimeError("System is shutting down.")
-
-        if not self._file_system.check(filepath):
+    def encrypt(self, filepath: Path) -> None:
+        if not self._file_system.check_file(filepath):
             raise FileNotFoundError(f"File '{filepath}' not found.")
 
-        new_file = filepath.with_suffix(filepath.suffix + self.extension)
-        self._file_system.save(new_file, self._file_system.read(filepath))
-        return new_file.name
+        ori_data = self._file_system.read(filepath)
+        out_filepath = filepath.with_suffix(filepath.suffix + self.extension)
+        self._file_system.save(out_filepath, ori_data)
 
-    def test(self, filepath: Path) -> bool:
+    def verify(self, filepath: Path, ori_hash: bytes, hasher: Hasher) -> bool:
         return True

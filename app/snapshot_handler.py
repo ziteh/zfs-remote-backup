@@ -16,10 +16,10 @@ class SnapshotHandler(metaclass=ABCMeta):
     @abstractmethod
     def export(
         self,
+        out_dir: Path,
         dataset: str,
         base_snapshot: str,
         ref_snapshot: str | None,
-        output_dir: Path,
     ) -> Path:
         """Export snapshot.
 
@@ -35,7 +35,7 @@ class SnapshotHandler(metaclass=ABCMeta):
         raise NotImplementedError()
 
     @abstractmethod
-    def test(self, dataset: str, filepath: Path) -> bool:
+    def verify(self, dataset: str, dir: Path) -> bool:
         raise NotImplementedError()
 
     @abstractmethod
@@ -149,23 +149,22 @@ class MockSnapshotHandler(SnapshotHandler):
 
     def export(
         self,
+        out_dir: Path,
         dataset: str,
         base_snapshot: str,
         ref_snapshot: str | None,
-        output_dir: Path,
     ) -> Path:
         if self.shutdown:
             raise RuntimeError("System is shutting down.")
 
-        filepath = output_dir / self.filename
         # content = "\n".join([dataset, base_snapshot, ref_snapshot or "NONE"])
         content = os.urandom(1024)
-        self._file_system.save(filepath, content)
+        out_filepath = out_dir / self.filename
+        self._file_system.save(out_filepath, content)
+        return out_filepath
 
-        return filepath
-
-    def test(self, dataset: str, filepath: Path) -> bool:
-        return True
+    def verify(self, dataset: str, dir: Path) -> bool:
+        return self._file_system.check_file(dir / self.filename)
 
     def list(self, dataset: str) -> list[str]:
         if self.shutdown:
@@ -179,7 +178,7 @@ class MockSnapshotHandler(SnapshotHandler):
 
         latest_dir_path = Path(dataset)
         full_path = latest_dir_path / self.__get_latest_filename(type)
-        if not self._file_system.check(full_path):
+        if not self._file_system.check_file(full_path):
             return None  # no latest snapshot
 
         latest_snapshot: str = self._file_system.read(full_path)
@@ -193,7 +192,7 @@ class MockSnapshotHandler(SnapshotHandler):
         full_path = latest_dir_path / self.__get_latest_filename(type)
         self._file_system.save(full_path, snapshot)
 
-        if not self._file_system.check(full_path):
+        if not self._file_system.check_file(full_path):
             raise RuntimeError(f"Latest snapshot file save failed: {full_path}")
 
     def __get_latest_filename(self, type: BackupType) -> str:
