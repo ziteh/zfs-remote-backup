@@ -24,8 +24,7 @@ class BackupTaskManager:
         compression_handler: CompressionHandler,
         encryption_handler: EncryptionHandler,
         file_handler: FileHandler,
-        local_hasher: Hasher,
-        remote_hasher: Hasher,
+        hasher: Hasher,
     ):
         self.__snapshot_mgr = snapshot_handler
         self.__remote_mgr = remote_handler
@@ -34,8 +33,7 @@ class BackupTaskManager:
         self.__file_mgr = file_handler
         self.__splitter = splitter
 
-        self.__local_hasher = local_hasher
-        self.__remote_hasher = remote_hasher
+        self.__hasher = hasher
 
         self.__status_manager = status_io
 
@@ -71,20 +69,14 @@ class BackupTaskManager:
     @property
     def temp_dir(self) -> Path:
         """Get the temporary path for the backup task."""
-        return (
-            Path(TEMP_DIR)
-            / self.dataset
-            / f"{self.type}_{self.date.strftime('%Y-%m-%d')}"
-        )
+        return Path(TEMP_DIR) / self.dataset / f"{self.type}_{self.date.strftime('%Y-%m-%d')}"
 
     def run(self, auto: bool = False) -> None:
         while self.are_tasks_available:
             (stage, total, current) = self.__status_manager.restore_status()
 
             if self.__is_error_stage(current, total):
-                logger.error(
-                    f"Error in stage: {stage}, current: {current}, total: {total}"
-                )
+                logger.error(f"Error in stage: {stage}, current: {current}, total: {total}")
                 return
 
             try:
@@ -95,39 +87,23 @@ class BackupTaskManager:
                     case "snapshot_test":
                         self.__handle_export_test_stage()
 
-                    case "snapshot_hash":
-                        self.__handle_export_hash_stage()
-
                     case "split":
                         self.__handle_split_stage(current)
 
                     case "compress":
                         self.__handle_compress_stage(current)
 
-                    case "compress_test":
-                        self.__handle_compress_test_stage(current)
-                        pass
-
-                    case "compress_hash":
-                        self.__handle_compress_hash_stage(current)
-                        pass
-
                     case "encrypt":
                         self.__handle_encrypt_stage(current)
-
-                    case "encrypt_test":
-                        self.__handle_encrypt_test_stage(current)
-                        pass
-
-                    case "encrypt_hash":
-                        self.__handle_encrypt_hash_stage(current)
-                        pass
 
                     case "upload":
                         self.__handle_update_stage(current)
 
+                    case "verify":
+                        self.__handle_verify_stage()
+
                     case "clear":
-                        self.__handle_clear_stage(current)
+                        self.__handle_clear_stage()
 
                     case "done":
                         self.__handle_done_stage()
@@ -163,18 +139,9 @@ class BackupTaskManager:
         ok = self.__snapshot_mgr.verify(self.dataset, self.temp_dir)
         self.__status_manager.update_stage("snapshot_test", ok)
 
-    def __handle_export_hash_stage(self):
-        snapshot_filepath = self.temp_dir / self.__snapshot_mgr.filename
-        self.__local_hasher.reset()
-        self.__local_hasher.cal_file(snapshot_filepath)
-        hash = self.__local_hasher.digest
-        self.__status_manager.update_stage("snapshot_hash", hash)
-
     def __handle_split_stage(self, index: int):
         snapshot_filepath = self.temp_dir / self.__snapshot_mgr.filename
-        in_hash = (
-            self.__status_manager.current_task.stage.spited[-1] if index > 0 else b""
-        )
+        in_hash = self.__status_manager.current_task.stage.spit[-1] if index > 0 else b""
 
         out_hash = self.__splitter.split(snapshot_filepath, index, in_hash)
 
@@ -184,26 +151,12 @@ class BackupTaskManager:
         split_filepath = self.temp_dir / (
             self.__snapshot_mgr.filename + self.__splitter.extension(index)
         )
-        self.__compress_mgr.compress(split_filepath)
-        self.__status_manager.update_stage("compress", index)
 
-    def __handle_compress_test_stage(self, index: int):
-        split_filepath = self.temp_dir / (
-            self.__snapshot_mgr.filename + self.__splitter.extension(index)
-        )
-        ok = self.__compress_mgr.verify(split_filepath)
-        self.__status_manager.update_stage("compress_test", ok)
+        compressed_filepath = self.__compress_mgr.compress(split_filepath)
+        ok = self.__compress_mgr.verify(compressed_filepath)
         if ok:
+            self.__status_manager.update_stage("compress", index)
             self.__file_mgr.delete(split_filepath)
-
-    def __handle_compress_hash_stage(self, index: int):
-        split_filepath = self.temp_dir / (
-            self.__snapshot_mgr.filename + self.__splitter.extension(index)
-        )
-        self.__local_hasher.reset()
-        self.__local_hasher.cal_file(split_filepath)
-        hash = self.__local_hasher.digest
-        self.__status_manager.update_stage("compress_hash", hash)
 
     def __handle_encrypt_stage(self, index: int):
         compressed_filepath = self.temp_dir / (
@@ -212,35 +165,23 @@ class BackupTaskManager:
             + self.__compress_mgr.extension
         )
 
-        self.__encrypt_mgr.encrypt(compressed_filepath)
-        self.__status_manager.update_stage("encrypt", index)
+        # calculate the hash of the compressed file
+        self.__hasher.reset()
+        self.__hasher.cal_file(compressed_filepath)
+        hash = self.__hasher.digest
 
-    def __handle_encrypt_test_stage(self, index: int):
-        compressed_filepath = self.temp_dir / (
-            self.__snapshot_mgr.filename
-            + self.__splitter.extension(index)
-            + self.__compress_mgr.extension
-        )
+        encrypted_filepath = self.__encrypt_mgr.encrypt(compressed_filepath)
 
-        ori_hash = self.__status_manager.current_task.stage.compressed_hash
-        ok = self.__encrypt_mgr.verify(
-            compressed_filepath, ori_hash, self.__local_hasher
-        )
-        self.__status_manager.update_stage("encrypt_test", ok)
-        if ok:
+        # verify the hash of the encrypted file
+        decrypted_filepath = self.__encrypt_mgr.decrypt(encrypted_filepath)
+        self.__hasher.reset()
+        self.__hasher.cal_file(decrypted_filepath)
+        self.__file_mgr.delete(decrypted_filepath)
+
+        # compare the hash of the decrypted file with the original hash
+        if hash == self.__hasher.digest:
+            self.__status_manager.update_stage("encrypt", index)
             self.__file_mgr.delete(compressed_filepath)
-
-    def __handle_encrypt_hash_stage(self, index: int):
-        compressed_filepath = self.temp_dir / (
-            self.__snapshot_mgr.filename
-            + self.__splitter.extension(index)
-            + self.__compress_mgr.extension
-        )
-
-        self.__remote_hasher.reset()
-        self.__remote_hasher.cal_file(compressed_filepath)
-        hash = self.__remote_hasher.digest
-        self.__status_manager.update_stage("encrypt_hash", hash)
 
     def __handle_update_stage(self, index: int):
         encrypted_filepath = self.temp_dir / (
@@ -260,15 +201,29 @@ class BackupTaskManager:
         self.__remote_mgr.upload(encrypted_filepath, encrypted_filepath, tags, metadata)
         self.__status_manager.update_stage("upload", index)
 
-    def __handle_clear_stage(self, index: int):
-        encrypted_filepath = self.temp_dir / (
-            self.__snapshot_mgr.filename
-            + self.__splitter.extension(index)
-            + self.__compress_mgr.extension
-            + self.__encrypt_mgr.extension
-        )
         self.__file_mgr.delete(encrypted_filepath)
-        self.__status_manager.update_stage("clear", index)
+
+    def __handle_verify_stage(self):
+        snapshot_filepath = self.temp_dir / self.__snapshot_mgr.filename
+
+        # calculate the hash of the original snapshot file
+        self.__hasher.reset()
+        self.__hasher.cal_file(snapshot_filepath)
+        full_file_hash = self.__hasher.digest
+
+        # calculate the hash of the split files
+        self.__hasher.reset()
+        # for hash in self.__status_manager.current_task.stage.spit:
+        #     self.__hasher.update(hash)
+        split_file_hash = self.__status_manager.current_task.stage.spit[-1]
+
+        same = full_file_hash == split_file_hash
+        self.__status_manager.update_stage("verify", same)
+
+    def __handle_clear_stage(self):
+        snapshot_filepath = self.temp_dir / self.__snapshot_mgr.filename
+        self.__file_mgr.delete(snapshot_filepath)
+        self.__status_manager.update_stage("clear", True)
 
     def __handle_done_stage(self):
         self.__status_manager.update_latest_snapshot(self.dataset, self.type, self.base)

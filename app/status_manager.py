@@ -1,5 +1,5 @@
 from abc import ABCMeta, abstractmethod
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Literal
@@ -11,15 +11,11 @@ from app.snapshot_handler import SnapshotHandler
 type BackupTaskStage = Literal[
     "snapshot_export",
     "snapshot_test",
-    "snapshot_hash",
     "split",
     "compress",
-    "compress_test",
-    "compress_hash",
     "encrypt",
-    "encrypt_test",
-    "encrypt_hash",
     "upload",
+    "verify",
     "clear",
     "done",
     # "error",
@@ -29,28 +25,28 @@ type BackupTaskStage = Literal[
 @dataclass(slots=True)
 class Stage:
     snapshot_exported: str
+    """Exported snapshot name, empty if not exported"""
 
     snapshot_tested: bool
+    """Snapshot test status"""
 
-    snapshot_hash: bytes
-
-    spited: list[bytes]  #  hash
+    spit: list[bytes]  #  hash
+    """List of split hashes, empty if not split"""
 
     compressed: int
-
-    compressed_test: int
-
-    compressed_hash: bytes
+    """Compressed file count"""
 
     encrypted: int
-
-    encrypted_test: int
-
-    encrypted_hash: bytes
+    """Encrypted file count"""
 
     uploaded: int
+    """Uploaded file count"""
+
+    verify: bool
+    """Verification status"""
 
     cleared: int
+    """Cleared file count"""
 
 
 @dataclass(slots=True)
@@ -217,15 +213,11 @@ class MockStatusManager(StatusManager):
             stage=Stage(
                 snapshot_exported="",
                 snapshot_tested=False,
-                snapshot_hash=b"",
-                spited=[],
+                spit=[],
                 compressed=-1,
-                compressed_test=-1,
-                compressed_hash=b"",
                 encrypted=-1,
-                encrypted_test=-1,
-                encrypted_hash=b"",
                 uploaded=-1,
+                verify=False,
                 cleared=-1,
             ),
         )
@@ -240,15 +232,11 @@ class MockStatusManager(StatusManager):
 
             case "diff":
                 latest_full = self.latest_snapshot(task.dataset, "full")
-                self._current_task.ref = (
-                    latest_full.name if latest_full else "ERROR_NONE"
-                )
+                self._current_task.ref = latest_full.name if latest_full else "ERROR_NONE"
 
             case "incr":
                 latest_diff = self.latest_snapshot(task.dataset, "diff")
-                self._current_task.ref = (
-                    latest_diff.name if latest_diff else "ERROR_NONE"
-                )
+                self._current_task.ref = latest_diff.name if latest_diff else "ERROR_NONE"
 
         self.save_current_task(self._current_task)
 
@@ -261,9 +249,7 @@ class MockStatusManager(StatusManager):
         if dataset not in self._latest_snapshot.latest:
             self._latest_snapshot.latest[dataset] = {}
 
-        self._latest_snapshot.latest[dataset][type] = LatestSnapshot(
-            datetime.now(), name
-        )
+        self._latest_snapshot.latest[dataset][type] = LatestSnapshot(datetime.now(), name)
 
     def update_split_quantity(self, quantity: int) -> None:
         if quantity <= 0:
@@ -278,24 +264,16 @@ class MockStatusManager(StatusManager):
                 self._current_task.stage.snapshot_exported = value
             case "snapshot_test":
                 self._current_task.stage.snapshot_tested = value
-            case "snapshot_hash":
-                self._current_task.stage.snapshot_hash = value
             case "split":
-                self._current_task.stage.spited.append(value)
+                self._current_task.stage.spit.append(value)
             case "compress":
                 self._current_task.stage.compressed = value
-            case "compress_test":
-                self._current_task.stage.compressed_test = value
-            case "compress_hash":
-                self._current_task.stage.compressed_hash = value
             case "encrypt":
                 self._current_task.stage.encrypted = value
-            case "encrypt_test":
-                self._current_task.stage.encrypted_test = value
-            case "encrypt_hash":
-                self._current_task.stage.encrypted_hash = value
             case "upload":
                 self._current_task.stage.uploaded = value
+            case "verify":
+                self._current_task.stage.verify = value
             case "clear":
                 self._current_task.stage.cleared = value
             case _:
@@ -317,40 +295,24 @@ class MockStatusManager(StatusManager):
         if not stage.snapshot_tested:
             return ("snapshot_test", 0, 0)
 
-        if not stage.snapshot_hash:
-            return ("snapshot_hash", 0, 0)
-
-        split_count = len(stage.spited)
+        split_count = len(stage.spit)
         if split_count == 0:
             return ("split", 0, 0)
         elif split_count == self._current_task.split_quantity:
-            return ("done", 0, split_count)
+            if stage.verify:
+                return ("done", 0, split_count)
+            else:
+                return ("verify", 0, split_count)
 
         if stage.compressed < split_count:
             return ("compress", split_count, stage.compressed)
         elif stage.compressed > split_count:
             return ("compress", -split_count, -stage.compressed)  # error
 
-        if stage.compressed_test < split_count:
-            return ("compress_test", split_count, stage.compressed_test)
-        elif stage.compressed_test > split_count:
-            return ("compress_test", -split_count, -stage.compressed_test)  # error
-
-        if stage.compressed_hash == b"":
-            return ("compress_hash", split_count, split_count)
-
         if stage.encrypted < split_count:
             return ("encrypt", split_count, stage.encrypted)
         elif stage.encrypted > split_count:
             return ("encrypt", -split_count, -stage.encrypted)  # error
-
-        if stage.encrypted_test < split_count:
-            return ("encrypt_test", split_count, stage.encrypted_test)
-        elif stage.encrypted_test > split_count:
-            return ("encrypt_test", -split_count, -stage.encrypted_test)  # error
-
-        if stage.encrypted_hash == b"":
-            return ("encrypt_hash", split_count, split_count)
 
         if stage.uploaded < split_count:
             return ("upload", split_count, stage.uploaded)

@@ -12,7 +12,7 @@ class CompressionHandler(metaclass=ABCMeta):
         raise NotImplementedError()
 
     @abstractmethod
-    def compress(self, filepath: Path) -> None:
+    def compress(self, filepath: Path) -> Path:
         """Compresses the given file path using the specified compression method.
 
         Args:
@@ -85,13 +85,15 @@ class MockCompressionHandler(CompressionHandler):
     def extension(self) -> str:
         return ".mock_cmp"
 
-    def compress(self, filepath: Path) -> None:
+    def compress(self, filepath: Path) -> Path:
         if not self._file_system.check_file(filepath):
             raise FileNotFoundError(f"File '{filepath}' not found.")
 
         ori_data = self._file_system.read(filepath)
         out_filepath = filepath.with_suffix(filepath.suffix + self.extension)
         self._file_system.save(out_filepath, ori_data)
+
+        return out_filepath
 
     def verify(self, filepath: Path) -> bool:
         return self._file_system.check_file(filepath)  # just check file exist

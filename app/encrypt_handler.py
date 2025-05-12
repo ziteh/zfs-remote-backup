@@ -13,7 +13,7 @@ class EncryptionHandler(metaclass=ABCMeta):
         raise NotImplementedError()
 
     @abstractmethod
-    def encrypt(self, filepath: Path) -> None:
+    def encrypt(self, filepath: Path) -> Path:
         """Encrypts the given filename using the specified encryption method.
 
         Args:
@@ -24,7 +24,7 @@ class EncryptionHandler(metaclass=ABCMeta):
         """
         raise NotImplementedError()
 
-    def verify(self, filepath: Path, ori_hash: bytes, hasher: Hasher) -> bool:
+    def decrypt(self, filepath: Path) -> Path:
         raise NotImplementedError()
 
 
@@ -67,7 +67,7 @@ class MockEncryptor(EncryptionHandler):
     def extension(self) -> str:
         return ".mock_cry"
 
-    def encrypt(self, filepath: Path) -> None:
+    def encrypt(self, filepath: Path) -> Path:
         if not self._file_system.check_file(filepath):
             raise FileNotFoundError(f"File '{filepath}' not found.")
 
@@ -75,5 +75,16 @@ class MockEncryptor(EncryptionHandler):
         out_filepath = filepath.with_suffix(filepath.suffix + self.extension)
         self._file_system.save(out_filepath, ori_data)
 
-    def verify(self, filepath: Path, ori_hash: bytes, hasher: Hasher) -> bool:
-        return True
+        return out_filepath
+
+    def decrypt(self, filepath: Path) -> Path:
+        if filepath.suffix != self.extension:
+            raise ValueError(
+                f"File '{filepath}' is not encrypted with the expected extension '{self.extension}'."
+            )
+
+        ori_data = self._file_system.read(filepath)
+        out_filepath = filepath.with_suffix("")
+        self._file_system.save(out_filepath, ori_data)
+
+        return out_filepath
