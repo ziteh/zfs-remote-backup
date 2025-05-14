@@ -94,89 +94,86 @@ class TaskQueue:
     tasks: list[BackupTarget]
 
 
-class StatusManager(metaclass=ABCMeta):
-    _current_task: CurrentTask
-    _task_queue: TaskQueue
-    _latest_snapshot: DatasetLatestSnapshot
+class StatusFilesIo(metaclass=ABCMeta):
+    @abstractmethod
+    def load_task_queue(self) -> TaskQueue:
+        raise NotImplementedError()
 
-    _current_task_path: Path
-    _task_queue_path: Path
-    _latest_snapshot_path: Path
+    @abstractmethod
+    def load_current_task(self) -> CurrentTask:
+        raise NotImplementedError()
 
+    @abstractmethod
+    def load_latest_snapshot(self) -> DatasetLatestSnapshot:
+        raise NotImplementedError()
+
+    @abstractmethod
+    def save_task_queue(self, task_queue: TaskQueue) -> None:
+        raise NotImplementedError()
+
+    @abstractmethod
+    def save_current_task(self, current_task: CurrentTask) -> None:
+        raise NotImplementedError()
+
+    @abstractmethod
+    def save_latest_snapshot(self, latest_snapshot: DatasetLatestSnapshot) -> None:
+        raise NotImplementedError()
+
+
+class MockStatusFilesIo(StatusFilesIo):
     def __init__(
         self,
-        status_dir: Path,
-        current_task_filename: str,
-        task_queue_filename: str,
-        latest_snapshot_filename: str,
-    ) -> None:
-        self._current_task_path = status_dir / current_task_filename
-        self._task_queue_path = status_dir / task_queue_filename
-        self._latest_snapshot_path = status_dir / latest_snapshot_filename
-
-    @property
-    @abstractmethod
-    def current_task(self) -> CurrentTask:
-        raise NotImplementedError()
-
-    @property
-    @abstractmethod
-    def task_queue(self) -> TaskQueue:
-        raise NotImplementedError()
-
-    @abstractmethod
-    def latest_snapshot(self, dataset: str, type: BackupType) -> LatestSnapshot | None:
-        raise NotImplementedError()
-
-    @abstractmethod
-    def restore_status(self) -> tuple[BackupTaskStage, int, int]:
-        raise NotImplementedError()
-
-    @abstractmethod
-    def update_stage(self, stage: BackupTaskStage, value: Any) -> None:
-        raise NotImplementedError()
-
-    @abstractmethod
-    def update_split_quantity(self, quantity: int) -> None:
-        raise NotImplementedError()
-
-    @abstractmethod
-    def update_latest_snapshot(
-        self,
-        dataset: str,
-        type: BackupType,
-        name: str,
-    ) -> None:
-        raise NotImplementedError()
-
-    @abstractmethod
-    def enqueue_task(
-        self,
-        task: BackupTarget,
-    ) -> None:
-        raise NotImplementedError()
-
-    @abstractmethod
-    def dequeue_task(self) -> int:
-        raise NotImplementedError()
-
-
-class MockStatusManager(StatusManager):
-    _file_system: FileHandler
-
-    def __init__(
-        self,
-        status_dir: Path,
+        tasks_filename: str,
+        current_filename: str,
+        latest_filename: str,
         file_system: FileHandler,
+    ) -> None:
+        self._file_system = file_system
+
+        self._task_filename = tasks_filename
+        self._current_filename = current_filename
+        self._latest_filename = latest_filename
+
+    def load_task_queue(self) -> TaskQueue:
+        if not self._file_system.check_file(self._task_filename):
+            raise FileNotFoundError(f"File '{self._task_filename}' not found.")
+
+        return self._file_system.read(self._task_filename)
+
+    def load_current_task(self) -> CurrentTask:
+        if not self._file_system.check_file(self._current_filename):
+            raise FileNotFoundError(f"File '{self._current_filename}' not found.")
+
+        return self._file_system.read(self._current_filename)
+
+    def load_latest_snapshot(self) -> DatasetLatestSnapshot:
+        if not self._file_system.check_file(self._latest_filename):
+            raise FileNotFoundError(f"File '{self._latest_filename}' not found.")
+
+        return self._file_system.read(self._latest_filename)
+
+    def save_task_queue(self, task_queue: TaskQueue) -> None:
+        self._file_system.save(self._task_filename, task_queue)
+
+    def save_current_task(self, current_task: CurrentTask) -> None:
+        self._file_system.save(self._current_filename, current_task)
+
+    def save_latest_snapshot(self, latest_snapshot: DatasetLatestSnapshot) -> None:
+        self._file_system.save(self._latest_filename, latest_snapshot)
+
+
+class MockStatusManager:
+    def __init__(
+        self,
+        status_io: StatusFilesIo,
         snapshot_manager: SnapshotHandler,
     ) -> None:
-        super().__init__(status_dir, "current.dict", "queue.dict", "latest.dict")
-        self._file_system = file_system
+        self._io = status_io
         self._snapshot_manager = snapshot_manager
 
-        self._load_current_task()
-        self._load_task_queue()
-        self._load_latest_snapshot()
+        self._task_queue: TaskQueue = self._io.load_task_queue()
+        self._latest_snapshot: DatasetLatestSnapshot = self._io.load_latest_snapshot()
+        self._current_task: CurrentTask = self._io.load_current_task()
 
     @property
     def current_task(self) -> CurrentTask:
@@ -191,13 +188,13 @@ class MockStatusManager(StatusManager):
         task: BackupTarget,
     ) -> None:
         self._task_queue.tasks.append(task)
-        self.save_task_queue(self._task_queue)
+        self._io.save_task_queue(self._task_queue)
 
     def dequeue_task(self) -> int:
         if len(self._task_queue.tasks) == 0:
             return -1
         _task = self._task_queue.tasks.pop(0)
-        self.save_task_queue(self._task_queue)
+        self._io.save_task_queue(self._task_queue)
         self._load_task()
         return len(self._task_queue.tasks)
 
@@ -238,7 +235,7 @@ class MockStatusManager(StatusManager):
                 latest_diff = self.latest_snapshot(task.dataset, "diff")
                 self._current_task.ref = latest_diff.name if latest_diff else "ERROR_NONE"
 
-        self.save_current_task(self._current_task)
+        self._io.save_current_task(self._current_task)
 
     def update_latest_snapshot(
         self,
@@ -256,7 +253,7 @@ class MockStatusManager(StatusManager):
             raise ValueError("Split quantity must be greater than 0")
 
         self._current_task.split_quantity = quantity
-        self.save_current_task(self._current_task)
+        self._io.save_current_task(self._current_task)
 
     def update_stage(self, stage: BackupTaskStage, value: Any) -> None:
         match stage:
@@ -279,14 +276,14 @@ class MockStatusManager(StatusManager):
             case _:
                 raise ValueError(f"Unknown stage: {stage}")
 
-        self.save_current_task(self._current_task)
+        self._io.save_current_task(self._current_task)
 
     def restore_status(self) -> tuple[BackupTaskStage, int, int]:
-        self._load_task_queue()
+        self._io.load_task_queue()
         if len(self._task_queue.tasks) == 0:
             return ("done", 0, 0)
 
-        self._load_current_task()
+        self._io.load_current_task()
         stage = self._current_task.stage
 
         if not stage.snapshot_exported:
@@ -328,36 +325,3 @@ class MockStatusManager(StatusManager):
 
     def latest_snapshot(self, dataset: str, type: BackupType) -> LatestSnapshot | None:
         return self._latest_snapshot.latest[dataset][type]
-
-    def _load_current_task(self):
-        if not self._file_system.check_file(self._current_task_path):
-            raise FileNotFoundError(f"File '{self._current_task_path}' not found.")
-
-        data: CurrentTask = self._file_system.read(self._current_task_path)
-        self._current_task = data
-
-    def save_current_task(self, current_task: CurrentTask):
-        self._file_system.save(self._current_task_path, self._current_task)
-        self._current_task = current_task
-
-    def _load_task_queue(self):
-        if not self._file_system.check_file(self._task_queue_path):
-            raise FileNotFoundError(f"File '{self._task_queue_path}' not found.")
-
-        data: TaskQueue = self._file_system.read(self._task_queue_path)
-        self._task_queue = data
-
-    def save_task_queue(self, task_queue: TaskQueue):
-        self._file_system.save(self._task_queue_path, self._task_queue)
-        self._task_queue = task_queue
-
-    def _load_latest_snapshot(self):
-        if not self._file_system.check_file(self._latest_snapshot_path):
-            raise FileNotFoundError(f"File '{self._latest_snapshot_path}' not found.")
-
-        data: DatasetLatestSnapshot = self._file_system.read(self._latest_snapshot_path)
-        self._latest_snapshot = data
-
-    def save_latest_snapshot(self, latest_snapshot: DatasetLatestSnapshot):
-        self._file_system.save(self._latest_snapshot_path, self._latest_snapshot)
-        self._latest_snapshot = latest_snapshot
