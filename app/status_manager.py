@@ -1,7 +1,6 @@
 from abc import ABCMeta, abstractmethod
 from dataclasses import dataclass
 from datetime import datetime
-from pathlib import Path
 from typing import Any, Literal
 
 from app.define import BackupType
@@ -294,11 +293,12 @@ class StatusManager:
             return ("snapshot_test", 0, 0)
 
         split_count = len(stage.spit)
+        total_split_qty = self._current_task.split_quantity
         if split_count == 0:
-            return ("split", 0, 0)
+            return ("split", total_split_qty, 0)
         elif split_count == self._current_task.split_quantity:
             if stage.verify:
-                return ("done", 0, split_count)
+                return ("done", 0, 0)
             else:
                 return ("verify", split_count, 0)
 
@@ -322,7 +322,7 @@ class StatusManager:
         elif stage.cleared > split_count:
             return ("clear", -split_count, -stage.cleared)  # error
 
-        return ("split", split_count, split_count)
+        return ("split", total_split_qty, split_count)
 
     def latest_snapshot(self, dataset: str, type: BackupType) -> LatestSnapshot | None:
         return self._latest_snapshot.latest[dataset][type]
