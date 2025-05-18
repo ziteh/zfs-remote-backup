@@ -162,7 +162,7 @@ class MockStatusFilesIo(StatusFilesIo):
         self._file_system.save(self._latest_filename, latest_snapshot)
 
 
-class MockStatusManager:
+class StatusManager:
     def __init__(
         self,
         status_io: StatusFilesIo,
@@ -247,6 +247,7 @@ class MockStatusManager:
             self._latest_snapshot.latest[dataset] = {}
 
         self._latest_snapshot.latest[dataset][type] = LatestSnapshot(datetime.now(), name)
+        self._io.save_latest_snapshot(self._latest_snapshot)
 
     def update_split_quantity(self, quantity: int) -> None:
         if quantity <= 0:
