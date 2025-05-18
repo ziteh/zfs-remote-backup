@@ -190,10 +190,10 @@ class TestStatusManagerRestoreStatus:
         current_task = CurrentTask(
             base="base_snapshot",
             ref="ref_snapshot",
-            split_quantity=5,
+            split_quantity=0,
             stream_hash=b"",
             stage=Stage(
-                snapshot_exported="",
+                snapshot_exported="",  # No snapshot exported
                 snapshot_tested=False,
                 spit=[],
                 compressed=0,
@@ -248,10 +248,13 @@ class TestStatusManagerRestoreStatus:
 
     def test_pending_split(self, status_manager: StatusManager, mock_status_io: Mock) -> None:
         """Test restore status when split is pending."""
+
+        total_split_qty = 5
+
         current_task = CurrentTask(
             base="base_snapshot",
             ref="ref_snapshot",
-            split_quantity=5,
+            split_quantity=total_split_qty,
             stream_hash=b"hash",
             stage=Stage(
                 snapshot_exported="snapshot1",
@@ -272,11 +275,15 @@ class TestStatusManagerRestoreStatus:
         stage, total, completed = status_manager.restore_status()
 
         assert stage == "split"
-        assert total == 0
+        assert total == total_split_qty
         assert completed == 0
 
     def test_partial_compression(self, status_manager: StatusManager, mock_status_io: Mock) -> None:
         """Test restore status when some files are compressed."""
+
+        spited_hashes = [b"hash1", b"hash2", b"hash3"]  # 3 out of 5 split
+        compressed_qty = 2  # 2 out of 3 compressed
+
         current_task = CurrentTask(
             base="base_snapshot",
             ref="ref_snapshot",
@@ -285,12 +292,8 @@ class TestStatusManagerRestoreStatus:
             stage=Stage(
                 snapshot_exported="snapshot1",
                 snapshot_tested=True,
-                spit=[
-                    b"hash1",
-                    b"hash2",
-                    b"hash3",
-                ],  # 3 split hashes
-                compressed=2,  # 2 out of 3 compressed
+                spit=spited_hashes,
+                compressed=compressed_qty,
                 encrypted=0,
                 uploaded=0,
                 verify=False,
@@ -305,11 +308,15 @@ class TestStatusManagerRestoreStatus:
         stage, total, completed = status_manager.restore_status()
 
         assert stage == "compress"
-        assert total == 3
-        assert completed == 2
+        assert total == len(spited_hashes)
+        assert completed == compressed_qty
 
     def test_partial_encryption(self, status_manager: StatusManager, mock_status_io: Mock) -> None:
         """Test restore status when some files are encrypted."""
+
+        spited_hashes = [b"hash1", b"hash2", b"hash3"]  # 3 out of 5 split
+        encrypted_qty = 2  # 2 out of 3 encrypted
+
         current_task = CurrentTask(
             base="base_snapshot",
             ref="ref_snapshot",
@@ -319,8 +326,8 @@ class TestStatusManagerRestoreStatus:
                 snapshot_exported="snapshot1",
                 snapshot_tested=True,
                 spit=[b"hash1", b"hash2", b"hash3"],
-                compressed=3,
-                encrypted=2,  # 2 out of 5 encrypted
+                compressed=len(spited_hashes),  # all spited files are compressed
+                encrypted=encrypted_qty,
                 uploaded=0,
                 verify=False,
                 cleared=0,
@@ -333,11 +340,15 @@ class TestStatusManagerRestoreStatus:
         stage, total, completed = status_manager.restore_status()
 
         assert stage == "encrypt"
-        assert total == 3
-        assert completed == 2
+        assert total == len(spited_hashes)
+        assert completed == encrypted_qty
 
     def test_partial_upload(self, status_manager: StatusManager, mock_status_io: Mock) -> None:
         """Test restore status when some files are uploaded."""
+
+        spited_hashes = [b"hash1", b"hash2", b"hash3"]  # 3 out of 5 split
+        uploaded_qty = 2  # 2 out of 3 uploaded
+
         current_task = CurrentTask(
             base="base_snapshot",
             ref="ref_snapshot",
@@ -346,10 +357,10 @@ class TestStatusManagerRestoreStatus:
             stage=Stage(
                 snapshot_exported="snapshot1",
                 snapshot_tested=True,
-                spit=[b"hash1", b"hash2", b"hash3"],
-                compressed=3,
-                encrypted=3,  # All encrypted
-                uploaded=2,  # 2 out of 3 uploaded
+                spit=spited_hashes,
+                compressed=len(spited_hashes),  # all spited files are compressed
+                encrypted=len(spited_hashes),  # all compressed files are encrypted
+                uploaded=uploaded_qty,
                 verify=False,
                 cleared=0,
             ),
@@ -362,11 +373,15 @@ class TestStatusManagerRestoreStatus:
         stage, total, completed = status_manager.restore_status()
 
         assert stage == "upload"
-        assert total == 3
-        assert completed == 2
+        assert total == len(spited_hashes)
+        assert completed == uploaded_qty
 
     def test_pending_clearing(self, status_manager: StatusManager, mock_status_io: Mock) -> None:
         """Test restore status when clearing is pending."""
+
+        spited_hashes = [b"hash1", b"hash2", b"hash3"]  # 3 out of 5 split
+        cleared_qty = 2  # 2 out of 3 cleared
+
         current_task = CurrentTask(
             base="base_snapshot",
             ref="ref_snapshot",
@@ -375,12 +390,12 @@ class TestStatusManagerRestoreStatus:
             stage=Stage(
                 snapshot_exported="snapshot1",
                 snapshot_tested=True,
-                spit=[b"hash1", b"hash2", b"hash3"],
-                compressed=3,
-                encrypted=3,
-                uploaded=3,  # All uploaded
-                verify=False,  # Not verified yet
-                cleared=2,
+                spit=spited_hashes,
+                compressed=len(spited_hashes),  # all spited files are compressed
+                encrypted=len(spited_hashes),  # all compressed files are encrypted
+                uploaded=len(spited_hashes),  # all encrypted files are uploaded
+                verify=False,
+                cleared=cleared_qty,
             ),
         )
         mock_status_io.load_current_task.return_value = current_task
@@ -391,13 +406,16 @@ class TestStatusManagerRestoreStatus:
         stage, total, completed = status_manager.restore_status()
 
         assert stage == "clear"
-        assert total == 3
-        assert completed == 2
+        assert total == len(spited_hashes)
+        assert completed == cleared_qty
 
     def test_partial_verification(
         self, status_manager: StatusManager, mock_status_io: Mock
     ) -> None:
         """Test restore status when files are partially verified."""
+
+        spited_hashes = [b"hash1", b"hash2", b"hash3", b"hash4", b"hash5"]  # all spited
+
         current_task = CurrentTask(
             base="base_snapshot",
             ref="ref_snapshot",
@@ -406,12 +424,12 @@ class TestStatusManagerRestoreStatus:
             stage=Stage(
                 snapshot_exported="snapshot1",
                 snapshot_tested=True,
-                spit=[b"hash1", b"hash2", b"hash3", b"hash4", b"hash5"],
-                compressed=5,
-                encrypted=5,
-                uploaded=5,
-                verify=False,  # Verified
-                cleared=5,
+                spit=spited_hashes,
+                compressed=len(spited_hashes),
+                encrypted=len(spited_hashes),
+                uploaded=len(spited_hashes),
+                verify=False,  # not verified yet
+                cleared=len(spited_hashes),
             ),
         )
         mock_status_io.load_current_task.return_value = current_task
@@ -422,11 +440,14 @@ class TestStatusManagerRestoreStatus:
         stage, total, completed = status_manager.restore_status()
 
         assert stage == "verify"
-        assert total == 5
+        assert total == len(spited_hashes)
         assert completed == 0
 
     def test_completed_backup(self, status_manager: StatusManager, mock_status_io: Mock) -> None:
         """Test restore status when backup is complete."""
+
+        spited_hashes = [b"hash1", b"hash2", b"hash3", b"hash4", b"hash5"]  # all spited
+
         current_task = CurrentTask(
             base="base_snapshot",
             ref="ref_snapshot",
@@ -435,12 +456,12 @@ class TestStatusManagerRestoreStatus:
             stage=Stage(
                 snapshot_exported="snapshot1",
                 snapshot_tested=True,
-                spit=[b"hash1", b"hash2", b"hash3", b"hash4", b"hash5"],
-                compressed=5,
-                encrypted=5,
-                uploaded=5,
+                spit=spited_hashes,
+                compressed=len(spited_hashes),
+                encrypted=len(spited_hashes),
+                uploaded=len(spited_hashes),
                 verify=True,
-                cleared=5,  # All cleared
+                cleared=len(spited_hashes),
             ),
         )
         mock_status_io.load_current_task.return_value = current_task
@@ -452,12 +473,16 @@ class TestStatusManagerRestoreStatus:
 
         assert stage == "done"
         assert total == 0
-        assert completed == 5
+        assert completed == 0
 
     def test_error_in_compression(
         self, status_manager: StatusManager, mock_status_io: Mock
     ) -> None:
         """Test restore status when there is an error in compression (more compressed than split)."""
+
+        spited_hashes = [b"hash1", b"hash2", b"hash3"]  # 3 out of 5 spited
+        compressed_qty = len(spited_hashes) + 1  # compressed file more than spited
+
         current_task = CurrentTask(
             base="base_snapshot",
             ref="ref_snapshot",
@@ -466,8 +491,8 @@ class TestStatusManagerRestoreStatus:
             stage=Stage(
                 snapshot_exported="snapshot1",
                 snapshot_tested=True,
-                spit=[b"hash1", b"hash2", b"hash3"],  # Only 3 split hashes
-                compressed=4,  # But 4 compressed - error condition
+                spit=spited_hashes,
+                compressed=compressed_qty,
                 encrypted=0,
                 uploaded=0,
                 verify=False,
@@ -482,5 +507,5 @@ class TestStatusManagerRestoreStatus:
         stage, total, completed = status_manager.restore_status()
 
         assert stage == "compress"
-        assert total == -3  # Negative values indicate error
-        assert completed == -4
+        assert total == -1 * len(spited_hashes)  # Negative values indicate error
+        assert completed == -1 * compressed_qty
