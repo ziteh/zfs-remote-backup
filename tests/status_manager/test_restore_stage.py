@@ -49,8 +49,8 @@ class TestSnapshotExportStage:
                 compressed=0,
                 encrypted=0,
                 uploaded=0,
-                verify=False,
                 cleared=0,
+                verify=False,
             ),
         )
         mock_status_io.load_current_task.return_value = current_task
@@ -85,8 +85,8 @@ class TestSnapshotTestStage:
                 compressed=0,
                 encrypted=0,
                 uploaded=0,
-                verify=False,
                 cleared=0,
+                verify=False,
             ),
         )
         mock_status_io.load_current_task.return_value = current_task
@@ -134,8 +134,8 @@ class TestSplitStage:
                 compressed=spited_qty,
                 encrypted=spited_qty,
                 uploaded=spited_qty,
-                verify=False,
                 cleared=spited_qty,
+                verify=False,
             ),
         )
         mock_status_io.load_current_task.return_value = current_task
@@ -166,8 +166,8 @@ class TestSplitStage:
                 compressed=processed_qty,
                 encrypted=processed_qty,
                 uploaded=processed_qty,
-                verify=False,
                 cleared=processed_qty,
+                verify=False,
             ),
         )
         mock_status_io.load_current_task.return_value = current_task
@@ -215,8 +215,8 @@ class TestCompressionStage:
                 compressed=compressed_qty,
                 encrypted=0,
                 uploaded=0,
-                verify=False,
                 cleared=0,
+                verify=False,
             ),
         )
         mock_status_io.load_current_task.return_value = current_task
@@ -250,8 +250,8 @@ class TestCompressionStage:
                 compressed=compressed_qty,
                 encrypted=0,
                 uploaded=0,
-                verify=False,
                 cleared=0,
+                verify=False,
             ),
         )
         mock_status_io.load_current_task.return_value = current_task
@@ -285,8 +285,8 @@ class TestCompressionStage:
                 compressed=compressed_qty,
                 encrypted=0,
                 uploaded=0,
-                verify=False,
                 cleared=0,
+                verify=False,
             ),
         )
         mock_status_io.load_current_task.return_value = current_task
@@ -334,8 +334,8 @@ class TestEncryptionStage:
                 compressed=spited_qty,  # all spited files are compressed
                 encrypted=encrypted_qty,
                 uploaded=0,
-                verify=False,
                 cleared=0,
+                verify=False,
             ),
         )
         mock_status_io.load_current_task.return_value = current_task
@@ -370,8 +370,8 @@ class TestEncryptionStage:
                 compressed=compressed_qty,
                 encrypted=encrypted_qty,
                 uploaded=0,
-                verify=False,
                 cleared=0,
+                verify=False,
             ),
         )
         mock_status_io.load_current_task.return_value = current_task
@@ -405,8 +405,8 @@ class TestEncryptionStage:
                 compressed=spited_qty,  # all spited files are compressed
                 encrypted=encrypted_qty,
                 uploaded=0,
-                verify=False,
                 cleared=0,
+                verify=False,
             ),
         )
         mock_status_io.load_current_task.return_value = current_task
@@ -454,8 +454,8 @@ class TestUploadStage:
                 compressed=spited_qty,  # all spited files are compressed
                 encrypted=spited_qty,  # all compressed files are encrypted
                 uploaded=uploaded_qty,
-                verify=False,
                 cleared=0,
+                verify=False,
             ),
         )
         mock_status_io.load_current_task.return_value = current_task
@@ -489,8 +489,8 @@ class TestUploadStage:
                 compressed=compressed_qty,
                 encrypted=encrypted_qty,
                 uploaded=uploaded_qty,
-                verify=False,
                 cleared=0,
+                verify=False,
             ),
         )
         mock_status_io.load_current_task.return_value = current_task
@@ -524,8 +524,8 @@ class TestUploadStage:
                 compressed=spited_qty,  # all spited files are compressed
                 encrypted=spited_qty,  # all compressed files are encrypted
                 uploaded=uploaded_qty,
-                verify=False,
                 cleared=0,
+                verify=False,
             ),
         )
         mock_status_io.load_current_task.return_value = current_task
@@ -573,8 +573,8 @@ class TestClearStage:
                 compressed=spited_qty,  # all spited files are compressed
                 encrypted=spited_qty,  # all compressed files are encrypted
                 uploaded=spited_qty,  # all encrypted files are uploaded
-                verify=False,
                 cleared=cleared_qty,
+                verify=False,
             ),
         )
         mock_status_io.load_current_task.return_value = current_task
@@ -611,8 +611,8 @@ class TestClearStage:
                 compressed=compressed_qty,
                 encrypted=encrypted_qty,
                 uploaded=uploaded_qty,
-                verify=False,
                 cleared=cleared_qty,
+                verify=False,
             ),
         )
         mock_status_io.load_current_task.return_value = current_task
@@ -646,8 +646,8 @@ class TestClearStage:
                 compressed=spited_qty,  # all spited files are compressed
                 encrypted=spited_qty,  # all compressed files are encrypted
                 uploaded=spited_qty,  # all encrypted files are uploaded
-                verify=False,
                 cleared=cleared_qty,
+                verify=False,
             ),
         )
         mock_status_io.load_current_task.return_value = current_task
@@ -693,8 +693,8 @@ class TestVerifyStage:
                 compressed=spited_qty,
                 encrypted=spited_qty,
                 uploaded=spited_qty,
-                verify=False,  # not verified yet
                 cleared=spited_qty,
+                verify=False,  # not verified yet
             ),
         )
         mock_status_io.load_current_task.return_value = current_task
@@ -732,8 +732,8 @@ class TestVerifyStage:
                 compressed=compressed_qty,
                 encrypted=encrypted_qty,
                 uploaded=uploaded_qty,
-                verify=verify,
                 cleared=cleared_qty,
+                verify=verify,
             ),
         )
         mock_status_io.load_current_task.return_value = current_task
@@ -779,8 +779,8 @@ class TestCompletedBackup:
                 compressed=spited_qty,
                 encrypted=spited_qty,
                 uploaded=spited_qty,
-                verify=True,  # verified
                 cleared=spited_qty,  # all cleared
+                verify=True,  # verified
             ),
         )
         mock_status_io.load_current_task.return_value = current_task

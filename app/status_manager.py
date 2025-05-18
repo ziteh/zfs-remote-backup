@@ -41,11 +41,11 @@ class Stage:
     uploaded: int
     """Uploaded file count"""
 
-    verify: bool
-    """Verification status"""
-
     cleared: int
     """Cleared file count"""
+
+    verify: bool
+    """Verification status"""
 
 
 @dataclass(slots=True)
