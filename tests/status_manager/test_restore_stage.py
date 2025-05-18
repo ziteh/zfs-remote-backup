@@ -230,6 +230,41 @@ class TestCompressionStage:
         assert total == spited_qty
         assert completed == compressed_qty
 
+    def test_single_file_compression(
+        self, status_manager: StatusManager, mock_status_io: Mock
+    ) -> None:
+        """Test restore status when a single file is ready for compression."""
+        total_split_qty = 1  # Only one file
+        spited_qty = 1  # File has been split
+        compressed_qty = 0  # File not yet compressed
+
+        current_task = CurrentTask(
+            base="base_snapshot",
+            ref="ref_snapshot",
+            split_quantity=total_split_qty,
+            stream_hash=b"hash",
+            stage=Stage(
+                snapshot_exported="snapshot1",
+                snapshot_tested=True,
+                spit=[f"hash{i}".encode() for i in range(spited_qty)],
+                compressed=compressed_qty,
+                encrypted=0,
+                uploaded=0,
+                verify=False,
+                cleared=0,
+            ),
+        )
+        mock_status_io.load_current_task.return_value = current_task
+        mock_status_io.load_task_queue.return_value = TaskQueue(
+            tasks=[BackupTarget(date=datetime.now(), type="full", dataset="test_dataset")]
+        )
+
+        stage, total, completed = status_manager.restore_status()
+
+        assert stage == "compress"
+        assert total == spited_qty
+        assert completed == compressed_qty
+
     def test_error_in_compression(
         self, status_manager: StatusManager, mock_status_io: Mock
     ) -> None:
@@ -434,6 +469,41 @@ class TestUploadStage:
         assert total == spited_qty
         assert completed == uploaded_qty
 
+    def test_single_file_upload(self, status_manager: StatusManager, mock_status_io: Mock) -> None:
+        """Test restore status when a single file is ready for upload."""
+        total_split_qty = 1  # Only one file
+        spited_qty = 1  # File has been split
+        compressed_qty = 1  # File has been compressed
+        encrypted_qty = 1  # File has been encrypted
+        uploaded_qty = 0  # File not yet uploaded
+
+        current_task = CurrentTask(
+            base="base_snapshot",
+            ref="ref_snapshot",
+            split_quantity=total_split_qty,
+            stream_hash=b"hash",
+            stage=Stage(
+                snapshot_exported="snapshot1",
+                snapshot_tested=True,
+                spit=[f"hash{i}".encode() for i in range(spited_qty)],
+                compressed=compressed_qty,
+                encrypted=encrypted_qty,
+                uploaded=uploaded_qty,
+                verify=False,
+                cleared=0,
+            ),
+        )
+        mock_status_io.load_current_task.return_value = current_task
+        mock_status_io.load_task_queue.return_value = TaskQueue(
+            tasks=[BackupTarget(date=datetime.now(), type="full", dataset="test_dataset")]
+        )
+
+        stage, total, completed = status_manager.restore_status()
+
+        assert stage == "upload"
+        assert total == spited_qty
+        assert completed == uploaded_qty
+
     def test_error_partial_upload(
         self, status_manager: StatusManager, mock_status_io: Mock
     ) -> None:
@@ -503,6 +573,44 @@ class TestClearStage:
                 compressed=spited_qty,  # all spited files are compressed
                 encrypted=spited_qty,  # all compressed files are encrypted
                 uploaded=spited_qty,  # all encrypted files are uploaded
+                verify=False,
+                cleared=cleared_qty,
+            ),
+        )
+        mock_status_io.load_current_task.return_value = current_task
+        mock_status_io.load_task_queue.return_value = TaskQueue(
+            tasks=[BackupTarget(date=datetime.now(), type="full", dataset="test_dataset")]
+        )
+
+        stage, total, completed = status_manager.restore_status()
+
+        assert stage == "clear"
+        assert total == spited_qty
+        assert completed == cleared_qty
+
+    def test_single_file_clearing(
+        self, status_manager: StatusManager, mock_status_io: Mock
+    ) -> None:
+        """Test restore status when a single file is ready for clearing."""
+        total_split_qty = 1  # Only one file
+        spited_qty = 1  # File has been split
+        compressed_qty = 1  # File has been compressed
+        encrypted_qty = 1  # File has been encrypted
+        uploaded_qty = 1  # File has been uploaded
+        cleared_qty = 0  # File not yet cleared
+
+        current_task = CurrentTask(
+            base="base_snapshot",
+            ref="ref_snapshot",
+            split_quantity=total_split_qty,
+            stream_hash=b"hash",
+            stage=Stage(
+                snapshot_exported="snapshot1",
+                snapshot_tested=True,
+                spit=[f"hash{i}".encode() for i in range(spited_qty)],
+                compressed=compressed_qty,
+                encrypted=encrypted_qty,
+                uploaded=uploaded_qty,
                 verify=False,
                 cleared=cleared_qty,
             ),
@@ -599,6 +707,45 @@ class TestVerifyStage:
         assert stage == "verify"
         assert total == spited_qty
         assert completed == 0
+
+    def test_single_file_verification(
+        self, status_manager: StatusManager, mock_status_io: Mock
+    ) -> None:
+        """Test restore status when a single file is ready for verification."""
+        total_split_qty = 1  # Only one file
+        spited_qty = 1  # File has been split
+        compressed_qty = 1  # File has been compressed
+        encrypted_qty = 1  # File has been encrypted
+        uploaded_qty = 1  # File has been uploaded
+        cleared_qty = 1  # File has been cleared
+        verify = False  # Not verified yet
+
+        current_task = CurrentTask(
+            base="base_snapshot",
+            ref="ref_snapshot",
+            split_quantity=total_split_qty,
+            stream_hash=b"hash",
+            stage=Stage(
+                snapshot_exported="snapshot1",
+                snapshot_tested=True,
+                spit=[f"hash{i}".encode() for i in range(spited_qty)],
+                compressed=compressed_qty,
+                encrypted=encrypted_qty,
+                uploaded=uploaded_qty,
+                verify=verify,
+                cleared=cleared_qty,
+            ),
+        )
+        mock_status_io.load_current_task.return_value = current_task
+        mock_status_io.load_task_queue.return_value = TaskQueue(
+            tasks=[BackupTarget(date=datetime.now(), type="full", dataset="test_dataset")]
+        )
+
+        stage, total, completed = status_manager.restore_status()
+
+        assert stage == "verify"
+        assert total == spited_qty
+        assert completed == 0  # Verification not started
 
 
 class TestCompletedBackup:
