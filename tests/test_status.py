@@ -340,11 +340,23 @@ class TestStatusManagerRestoreStatus:
         assert total == -1 * total_split_qty  # Negative values indicate error
         assert completed == -1 * processed_qty  # Negative values indicate error
 
-    def test_partial_compression(self, status_manager: StatusManager, mock_status_io: Mock) -> None:
+    @pytest.mark.parametrize(
+        "total_split_qty, spited_qty",
+        [
+            (5, 3),  # 3 out of 5 spited
+            (5, 4),  # 4 out of 5 spited
+            (100000, 99999),  # 99999 out of 100000 spited
+        ],
+    )
+    def test_partial_compression(
+        self,
+        status_manager: StatusManager,
+        mock_status_io: Mock,
+        total_split_qty: int,
+        spited_qty: int,
+    ) -> None:
         """Test restore status when some files are compressed."""
 
-        total_split_qty = 5
-        spited_qty = total_split_qty - 2  # 3 out of 5 spited
         compressed_qty = spited_qty - 1  # last one not compressed
 
         current_task = CurrentTask(
@@ -410,11 +422,23 @@ class TestStatusManagerRestoreStatus:
         assert total == -1 * spited_qty  # Negative values indicate error
         assert completed == -1 * compressed_qty  # Negative values indicate error
 
-    def test_partial_encryption(self, status_manager: StatusManager, mock_status_io: Mock) -> None:
+    @pytest.mark.parametrize(
+        "total_split_qty, spited_qty",
+        [
+            (5, 3),  # 3 out of 5 spited
+            (5, 4),  # 4 out of 5 spited
+            (100000, 99999),  # 99999 out of 100000 spited
+        ],
+    )
+    def test_partial_encryption(
+        self,
+        status_manager: StatusManager,
+        mock_status_io: Mock,
+        total_split_qty: int,
+        spited_qty: int,
+    ) -> None:
         """Test restore status when some files are encrypted."""
 
-        total_split_qty = 5
-        spited_qty = total_split_qty - 2  # 3 out of 5 spited
         encrypted_qty = spited_qty - 1  # last one not encrypted
 
         current_task = CurrentTask(
@@ -478,11 +502,23 @@ class TestStatusManagerRestoreStatus:
         assert total == -1 * spited_qty  # Negative values indicate error
         assert completed == -1 * encrypted_qty  # Negative values indicate error
 
-    def test_partial_upload(self, status_manager: StatusManager, mock_status_io: Mock) -> None:
+    @pytest.mark.parametrize(
+        "total_split_qty, spited_qty",
+        [
+            (5, 3),  # 3 out of 5 spited
+            (5, 4),  # 4 out of 5 spited
+            (100000, 99999),  # 99999 out of 100000 spited
+        ],
+    )
+    def test_partial_upload(
+        self,
+        status_manager: StatusManager,
+        mock_status_io: Mock,
+        total_split_qty: int,
+        spited_qty: int,
+    ) -> None:
         """Test restore status when some files are uploaded."""
 
-        total_split_qty = 5
-        spited_qty = total_split_qty - 2  # 3 out of 5 spited
         uploaded_qty = spited_qty - 1  # last one not uploaded
 
         current_task = CurrentTask(
@@ -546,11 +582,23 @@ class TestStatusManagerRestoreStatus:
         assert total == -1 * spited_qty  # Negative values indicate error
         assert completed == -1 * uploaded_qty  # Negative values indicate error
 
-    def test_pending_clearing(self, status_manager: StatusManager, mock_status_io: Mock) -> None:
+    @pytest.mark.parametrize(
+        "total_split_qty, spited_qty",
+        [
+            (5, 3),  # 3 out of 5 spited
+            (5, 4),  # 4 out of 5 spited
+            (100000, 99999),  # 99999 out of 100000 spited
+        ],
+    )
+    def test_pending_clearing(
+        self,
+        status_manager: StatusManager,
+        mock_status_io: Mock,
+        total_split_qty: int,
+        spited_qty: int,
+    ) -> None:
         """Test restore status when clearing is pending."""
 
-        total_split_qty = 5
-        spited_qty = total_split_qty - 2  # 3 out of 5 spited
         cleared_qty = spited_qty - 1  # last one not cleared
 
         current_task = CurrentTask(
@@ -614,13 +662,22 @@ class TestStatusManagerRestoreStatus:
         assert total == -1 * spited_qty  # Negative values indicate error
         assert completed == -1 * cleared_qty  # Negative values indicate error
 
+    @pytest.mark.parametrize(
+        "total_split_qty, spited_qty",
+        [
+            (5, 5),  # All files are split
+            (10, 10),  # All files are split
+            (100000, 100000),  # All files are split
+        ],
+    )
     def test_partial_verification(
-        self, status_manager: StatusManager, mock_status_io: Mock
+        self,
+        status_manager: StatusManager,
+        mock_status_io: Mock,
+        total_split_qty: int,
+        spited_qty: int,
     ) -> None:
         """Test restore status when files are partially verified."""
-
-        total_split_qty = 5  # total split quantity
-        spited_qty = total_split_qty  # all files are split
 
         current_task = CurrentTask(
             base="base_snapshot",
@@ -649,11 +706,22 @@ class TestStatusManagerRestoreStatus:
         assert total == spited_qty
         assert completed == 0
 
-    def test_completed_backup(self, status_manager: StatusManager, mock_status_io: Mock) -> None:
+    @pytest.mark.parametrize(
+        "total_split_qty, spited_qty",
+        [
+            (5, 5),  # All files are split
+            (10, 10),  # All files are split
+            (100000, 100000),  # All files are split
+        ],
+    )
+    def test_completed_backup(
+        self,
+        status_manager: StatusManager,
+        mock_status_io: Mock,
+        total_split_qty: int,
+        spited_qty: int,
+    ) -> None:
         """Test restore status when backup is complete."""
-
-        total_split_qty = 5  # total split quantity
-        spited_qty = total_split_qty  # all files are split
 
         current_task = CurrentTask(
             base="base_snapshot",
