@@ -314,6 +314,20 @@ class StatusManager:
             else:
                 return ("verify", split_count, 0)
 
+        # Check if any stage has a negative value
+        if stage.compressed < 0:
+            return ("compress", -split_count, stage.compressed)  # error
+
+        if stage.encrypted < 0:
+            return ("encrypt", -split_count, stage.encrypted)  # error
+
+        if stage.uploaded < 0:
+            return ("upload", -split_count, stage.uploaded)  # error
+
+        if stage.cleared < 0:
+            return ("clear", -split_count, stage.cleared)  # error
+
+        # Check if any stage is not completed
         if stage.compressed < split_count:
             return ("compress", split_count, stage.compressed)
         elif stage.compressed > split_count:
