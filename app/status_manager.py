@@ -307,6 +307,7 @@ class StatusManager:
             and stage.compressed == split_count
             and stage.encrypted == split_count
             and stage.uploaded == split_count
+            and stage.cleared == split_count
         ):
             if stage.verify:
                 return ("done", 0, 0)
