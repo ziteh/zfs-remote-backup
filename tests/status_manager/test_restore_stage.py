@@ -104,9 +104,23 @@ class TestSnapshotTestStage:
 class TestSplitStage:
     """Test restore_status related to split stage."""
 
-    def test_pending_split(self, status_manager: StatusManager, mock_status_io: Mock) -> None:
+    @pytest.mark.parametrize(
+        "total_split_qty, spited_qty",
+        [
+            (5, 0),  # 0 out of 5 spited
+            (5, 3),  # 3 out of 5 spited
+            (1, 0),  # 0 out of 1 spited
+            (100000, 99999),  # 99999 out of 100000 spited
+        ],
+    )
+    def test_pending_split(
+        self,
+        status_manager: StatusManager,
+        mock_status_io: Mock,
+        total_split_qty: int,
+        spited_qty: int,
+    ) -> None:
         """Test restore status when split is pending."""
-        total_split_qty = 5
 
         current_task = CurrentTask(
             base="base_snapshot",
@@ -116,12 +130,12 @@ class TestSplitStage:
             stage=Stage(
                 snapshot_exported="snapshot1",
                 snapshot_tested=True,  # Snapshot tested
-                spit=[],  # No split hashes
-                compressed=0,
-                encrypted=0,
-                uploaded=0,
+                spit=[f"hash{i}".encode() for i in range(spited_qty)],
+                compressed=spited_qty,
+                encrypted=spited_qty,
+                uploaded=spited_qty,
                 verify=False,
-                cleared=0,
+                cleared=spited_qty,
             ),
         )
         mock_status_io.load_current_task.return_value = current_task
@@ -133,39 +147,7 @@ class TestSplitStage:
 
         assert stage == "split"
         assert total == total_split_qty
-        assert completed == 0
-
-    def test_pending_split_2(self, status_manager: StatusManager, mock_status_io: Mock) -> None:
-        """Test restore status when split is partially complete."""
-        total_split_qty = 5
-        processed_qty = total_split_qty - 2  # 3 out of 5 spited
-
-        current_task = CurrentTask(
-            base="base_snapshot",
-            ref="ref_snapshot",
-            split_quantity=total_split_qty,
-            stream_hash=b"hash",
-            stage=Stage(
-                snapshot_exported="snapshot1",
-                snapshot_tested=True,
-                spit=[f"hash{i}".encode() for i in range(processed_qty)],
-                compressed=processed_qty,
-                encrypted=processed_qty,
-                uploaded=processed_qty,
-                verify=False,
-                cleared=processed_qty,
-            ),
-        )
-        mock_status_io.load_current_task.return_value = current_task
-        mock_status_io.load_task_queue.return_value = TaskQueue(
-            tasks=[BackupTarget(date=datetime.now(), type="full", dataset="test_dataset")]
-        )
-
-        stage, total, completed = status_manager.restore_status()
-
-        assert stage == "split"
-        assert total == total_split_qty
-        assert completed == processed_qty
+        assert completed == spited_qty
 
     def test_error_pending_split(self, status_manager: StatusManager, mock_status_io: Mock) -> None:
         """Test restore status when there is an error in split (more splits than expected)."""
