@@ -300,7 +300,14 @@ class StatusManager:
 
         if split_count == 0:
             return ("split", total_split_qty, 0)
-        elif split_count == self._current_task.split_quantity:
+
+        # Check if all stages are completed
+        if (
+            split_count == self._current_task.split_quantity
+            and stage.compressed == split_count
+            and stage.encrypted == split_count
+            and stage.uploaded == split_count
+        ):
             if stage.verify:
                 return ("done", 0, 0)
             else:
