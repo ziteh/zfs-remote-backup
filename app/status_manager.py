@@ -294,6 +294,10 @@ class StatusManager:
 
         split_count = len(stage.spit)
         total_split_qty = self._current_task.split_quantity
+
+        if split_count > total_split_qty:
+            return ("split", -total_split_qty, -split_count)  # error
+
         if split_count == 0:
             return ("split", total_split_qty, 0)
         elif split_count == self._current_task.split_quantity:
