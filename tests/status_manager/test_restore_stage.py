@@ -385,6 +385,46 @@ class TestEncryptionStage:
         assert total == spited_qty
         assert completed == encrypted_qty
 
+    def test_error_negative_encryption_count(
+        self, status_manager: StatusManager, mock_status_io: Mock
+    ) -> None:
+        """Test restore status when encrypted count is negative (which is invalid)."""
+        total_split_qty = 5
+        spited_qty = 3  # 3 out of 5 spited
+        compressed_qty = spited_qty  # all spited files are compressed
+        encrypted_qty = -1  # negative encrypted count (error)
+
+        current_task = CurrentTask(
+            base="base_snapshot",
+            ref="ref_snapshot",
+            split_quantity=total_split_qty,
+            stream_hash=b"hash",
+            stage=Stage(
+                snapshot_exported="snapshot1",
+                snapshot_tested=True,
+                spit=[f"hash{i}".encode() for i in range(spited_qty)],
+                compressed=compressed_qty,
+                encrypted=encrypted_qty,  # 負數加密計數
+                uploaded=0,
+                cleared=0,
+                verify=False,
+            ),
+        )
+        mock_status_io.load_current_task.return_value = current_task
+        mock_status_io.load_task_queue.return_value = TaskQueue(
+            tasks=[BackupTarget(date=datetime.now(), type="full", dataset="test_dataset")]
+        )
+
+        stage, total, completed = status_manager.restore_status()
+
+        assert stage == "encrypt"
+        assert total == -compressed_qty
+        assert completed == encrypted_qty
+
+        # Negative values indicate error
+        assert total < 0
+        assert completed < 0
+
     def test_error_partial_encryption(
         self, status_manager: StatusManager, mock_status_io: Mock
     ) -> None:
