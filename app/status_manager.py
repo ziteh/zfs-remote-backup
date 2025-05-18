@@ -280,11 +280,11 @@ class StatusManager:
         self._io.save_current_task(self._current_task)
 
     def restore_status(self) -> tuple[BackupTaskStage, int, int]:
-        self._io.load_task_queue()
+        self._task_queue = self._io.load_task_queue()
         if len(self._task_queue.tasks) == 0:
             return ("done", 0, 0)
 
-        self._io.load_current_task()
+        self._current_task = self._io.load_current_task()
         stage = self._current_task.stage
 
         if not stage.snapshot_exported:
@@ -300,7 +300,7 @@ class StatusManager:
             if stage.verify:
                 return ("done", 0, split_count)
             else:
-                return ("verify", 0, split_count)
+                return ("verify", split_count, 0)
 
         if stage.compressed < split_count:
             return ("compress", split_count, stage.compressed)
