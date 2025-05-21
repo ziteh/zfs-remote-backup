@@ -1,3 +1,6 @@
+use chrono::{DateTime, Utc};
+use std::collections::VecDeque;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BackupType {
     Full,
@@ -21,7 +24,7 @@ pub enum BackupTaskStage {
 
 pub type Hash = Vec<u8>;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct BackupStageStatus {
     /// Exporting snapshot name, empty if not exporting
     pub snapshot_exported_name: String,
@@ -48,7 +51,7 @@ pub struct BackupStageStatus {
     pub verified: bool,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct ActiveBackupTask {
     pub base_snapshot: String,
     pub ref_snapshot: String,
@@ -57,7 +60,7 @@ pub struct ActiveBackupTask {
     pub full_hash: Hash,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct LatestSnapshotInfo {
     /// Latest snapshot date
     pub update: DateTime<Utc>,
@@ -69,7 +72,7 @@ pub struct LatestSnapshotInfo {
 /// Dataset name -> BackupType -> LatestSnapshotInfo
 pub type LatestSnapshotMap = HashMap<String, HashMap<BackupType, LatestSnapshotInfo>>;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct BackupTarget {
     /// Target date
     pub date: DateTime<Utc>,
@@ -81,4 +84,4 @@ pub struct BackupTarget {
     pub dataset: String,
 }
 
-pub type BackupTargetQueue = Vec<BackupTarget>;
+pub type BackupTargetQueue = VecDeque<BackupTarget>;
