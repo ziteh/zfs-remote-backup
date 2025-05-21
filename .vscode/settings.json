@@ -23,6 +23,7 @@
     "Deque",
     "Encryptor",
     "fput",
+    "mockall",
     "urandom"
   ],
 }
