@@ -3,8 +3,13 @@ use std::collections::VecDeque;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BackupType {
+    /// Full backup
     Full,
+
+    /// Differential backup
     Diff,
+
+    /// Incremental backup
     Incr,
 }
 
