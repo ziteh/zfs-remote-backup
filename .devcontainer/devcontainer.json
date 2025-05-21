@@ -1,0 +1,31 @@
+{
+  "name": "ZFS Remote Backup",
+  "image": "mcr.microsoft.com/devcontainers/rust:1-1-bookworm",
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "editor.insertSpaces": true,
+        "editor.detectIndentation": false,
+        "rust-analyzer.testExplorer": true,
+        "files.readonlyInclude": {
+          // mark Rust library sources as read-only
+          "**/.cargo/registry/src/**/*.rs": true,
+          "**/.cargo/git/checkouts/**/*.rs": true,
+          "**/lib/rustlib/src/rust/library/**/*.rs": true
+        },
+        "[rust]": {
+          "editor.tabSize": 4,
+          "editor.defaultFormatter": "rust-lang.rust-analyzer"
+        },
+        "[toml]": {
+          "editor.tabSize": 4,
+          "editor.defaultFormatter": "tamasfe.even-better-toml"
+        }
+      },
+      "extensions": [
+        "rust-lang.rust-analyzer",
+        "tamasfe.even-better-toml"
+      ]
+    }
+  }
+}
