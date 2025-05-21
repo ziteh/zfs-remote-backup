@@ -16,3 +16,6 @@ wheels/
 
 # Project
 .env.local
+
+# Rust
+target/
