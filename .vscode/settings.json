@@ -19,6 +19,7 @@
     "uv.lock",
   ],
   "cSpell.words": [
+    "chrono",
     "Encryptor",
     "fput",
     "urandom"
