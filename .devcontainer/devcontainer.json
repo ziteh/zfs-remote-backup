@@ -6,13 +6,17 @@
       "settings": {
         "editor.insertSpaces": true,
         "editor.detectIndentation": false,
-        "rust-analyzer.testExplorer": true,
+        "files.eol": "\n",
+        "files.insertFinalNewline": true,
+        "files.trimFinalNewlines": true,
+        "files.trimTrailingWhitespace": true,
         "files.readonlyInclude": {
           // mark Rust library sources as read-only
           "**/.cargo/registry/src/**/*.rs": true,
           "**/.cargo/git/checkouts/**/*.rs": true,
           "**/lib/rustlib/src/rust/library/**/*.rs": true
         },
+        "rust-analyzer.testExplorer": true,
         "[rust]": {
           "editor.tabSize": 4,
           "editor.defaultFormatter": "rust-lang.rust-analyzer"
