@@ -12,11 +12,11 @@
     ".git/{index,*refs,*HEAD}",
     ".vscode",
     ".vscode-insiders",
-    ".devcontainers/devcontainer.json",
+    ".devcontainer/devcontainer.json",
     ".venv",
     "pyproject.toml",
     "requirements.txt",
-    "uv.lock",
+    "*.lock",
   ],
   "cSpell.words": [
     "chrono",
