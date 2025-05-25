@@ -228,6 +228,28 @@ mod tests {
     }
 
     #[test]
+    fn test_restore_status_empty_queue() {
+        let mut mock_io = MockFileIo::new();
+
+        mock_io
+            .expect_load_target_queue()
+            .returning(|| Ok(VecDeque::new())); // Empty queue
+
+        mock_io
+            .expect_load_active_tasks()
+            .returning(|| Ok(ActiveBackupTask::default()));
+
+        mock_io
+            .expect_load_latest_snapshot_map()
+            .returning(|| Ok(LatestSnapshotMap::default()));
+
+        let mut manager = StatusManager::new(Box::new(mock_io)).unwrap();
+        let result = manager.restore_status().unwrap();
+
+        assert_eq!(result, (BackupTaskStage::Done, 0, 0));
+    }
+
+    #[test]
     fn test_restore_status_snapshot_export_stage() {
         let mut mock_io = MockFileIo::new();
 
@@ -271,6 +293,774 @@ mod tests {
 
         let mut manager = StatusManager::new(Box::new(mock_io)).unwrap();
         let result = manager.restore_status().unwrap();
+
         assert_eq!(result, (BackupTaskStage::SnapshotExport, 0, 0));
+    }
+
+    #[test]
+    fn test_restore_status_snapshot_test_stage() {
+        let mut mock_io = MockFileIo::new();
+
+        let mut queue = VecDeque::new();
+        queue.push_back(BackupTarget {
+            date: Utc::now(),
+            backup_type: BackupType::Full,
+            dataset: "pool/data".to_string(),
+        });
+
+        let progress = BackupStageStatus {
+            snapshot_exported_name: "snapshot1".to_string(), // Snapshot exported
+            snapshot_tested: false,                          // but not tested
+            split_hashes: vec![],
+            compressed: 0,
+            encrypted: 0,
+            uploaded: 0,
+            cleanup: 0,
+            verified: false,
+        };
+
+        let active = ActiveBackupTask {
+            progress,
+            split_qty: 5,
+            base_snapshot: "base".to_string(),
+            ref_snapshot: "ref".to_string(),
+            full_hash: vec![1, 2, 3],
+        };
+
+        mock_io
+            .expect_load_target_queue()
+            .returning(move || Ok(queue.clone()));
+
+        mock_io
+            .expect_load_active_tasks()
+            .returning(move || Ok(active.clone()));
+
+        mock_io
+            .expect_load_latest_snapshot_map()
+            .returning(move || Ok(LatestSnapshotMap::default()));
+
+        let mut manager = StatusManager::new(Box::new(mock_io)).unwrap();
+        let result = manager.restore_status().unwrap();
+
+        assert_eq!(result, (BackupTaskStage::SnapshotTest, 0, 0));
+    }
+
+    #[test]
+    fn test_restore_status_split_stage() {
+        let mut mock_io = MockFileIo::new();
+
+        let mut queue = VecDeque::new();
+        queue.push_back(BackupTarget {
+            date: Utc::now(),
+            backup_type: BackupType::Full,
+            dataset: "pool/data".to_string(),
+        });
+
+        let progress = BackupStageStatus {
+            snapshot_exported_name: "snapshot1".to_string(),
+            snapshot_tested: true, // Snapshot tested
+            split_hashes: vec![],  // but no splits yet
+            compressed: 0,
+            encrypted: 0,
+            uploaded: 0,
+            cleanup: 0,
+            verified: false,
+        };
+
+        let active = ActiveBackupTask {
+            progress,
+            split_qty: 5,
+            base_snapshot: "base".to_string(),
+            ref_snapshot: "ref".to_string(),
+            full_hash: vec![1, 2, 3],
+        };
+
+        mock_io
+            .expect_load_target_queue()
+            .returning(move || Ok(queue.clone()));
+
+        mock_io
+            .expect_load_active_tasks()
+            .returning(move || Ok(active.clone()));
+
+        mock_io
+            .expect_load_latest_snapshot_map()
+            .returning(move || Ok(LatestSnapshotMap::default()));
+
+        let mut manager = StatusManager::new(Box::new(mock_io)).unwrap();
+        let result = manager.restore_status().unwrap();
+
+        assert_eq!(result, (BackupTaskStage::Split, 5, 0));
+    }
+
+    #[test]
+    fn test_restore_status_split_in_progress() {
+        let mut mock_io = MockFileIo::new();
+
+        let mut queue = VecDeque::new();
+        queue.push_back(BackupTarget {
+            date: Utc::now(),
+            backup_type: BackupType::Full,
+            dataset: "pool/data".to_string(),
+        });
+
+        let total_split_qty = 5;
+        let split_done = 3;
+
+        let progress = BackupStageStatus {
+            snapshot_exported_name: "snapshot1".to_string(),
+            snapshot_tested: true,
+            split_hashes: (0..split_done)
+                .map(|i| vec![i as u8, (i + 1) as u8])
+                .collect(),
+            compressed: split_done,
+            encrypted: split_done,
+            uploaded: split_done,
+            cleanup: split_done,
+            verified: false,
+        };
+
+        let active = ActiveBackupTask {
+            progress,
+            split_qty: total_split_qty,
+            base_snapshot: "base".to_string(),
+            ref_snapshot: "ref".to_string(),
+            full_hash: vec![1, 2, 3],
+        };
+
+        mock_io
+            .expect_load_target_queue()
+            .returning(move || Ok(queue.clone()));
+
+        mock_io
+            .expect_load_active_tasks()
+            .returning(move || Ok(active.clone()));
+
+        mock_io
+            .expect_load_latest_snapshot_map()
+            .returning(move || Ok(LatestSnapshotMap::default()));
+
+        let mut manager = StatusManager::new(Box::new(mock_io)).unwrap();
+        let result = manager.restore_status().unwrap();
+
+        assert_eq!(
+            result,
+            (BackupTaskStage::Split, total_split_qty, split_done as u64)
+        );
+    }
+
+    #[test]
+    fn test_restore_status_compression_stage() {
+        let mut mock_io = MockFileIo::new();
+
+        let mut queue = VecDeque::new();
+        queue.push_back(BackupTarget {
+            date: Utc::now(),
+            backup_type: BackupType::Full,
+            dataset: "pool/data".to_string(),
+        });
+
+        let split_done = 3;
+        let compressed_done = 2;
+
+        let progress = BackupStageStatus {
+            snapshot_exported_name: "snapshot1".to_string(),
+            snapshot_tested: true,
+            split_hashes: (0..split_done)
+                .map(|i| vec![i as u8, (i + 1) as u8])
+                .collect(),
+            compressed: compressed_done,
+            encrypted: compressed_done,
+            uploaded: compressed_done,
+            cleanup: compressed_done,
+            verified: false,
+        };
+
+        let active = ActiveBackupTask {
+            progress,
+            split_qty: 5,
+            base_snapshot: "base".to_string(),
+            ref_snapshot: "ref".to_string(),
+            full_hash: vec![1, 2, 3],
+        };
+
+        mock_io
+            .expect_load_target_queue()
+            .returning(move || Ok(queue.clone()));
+
+        mock_io
+            .expect_load_active_tasks()
+            .returning(move || Ok(active.clone()));
+
+        mock_io
+            .expect_load_latest_snapshot_map()
+            .returning(move || Ok(LatestSnapshotMap::default()));
+
+        let mut manager = StatusManager::new(Box::new(mock_io)).unwrap();
+        let result = manager.restore_status().unwrap();
+
+        assert_eq!(
+            result,
+            (
+                BackupTaskStage::Compress,
+                split_done as u64,
+                compressed_done
+            )
+        );
+    }
+
+    #[test]
+    fn test_restore_status_encryption_stage() {
+        let mut mock_io = MockFileIo::new();
+
+        let mut queue = VecDeque::new();
+        queue.push_back(BackupTarget {
+            date: Utc::now(),
+            backup_type: BackupType::Full,
+            dataset: "pool/data".to_string(),
+        });
+
+        let split_done = 3;
+        let compressed_done = split_done as u64;
+        let encrypted_done = 2;
+
+        let progress = BackupStageStatus {
+            snapshot_exported_name: "snapshot1".to_string(),
+            snapshot_tested: true,
+            split_hashes: (0..split_done)
+                .map(|i| vec![i as u8, (i + 1) as u8])
+                .collect(),
+            compressed: compressed_done,
+            encrypted: encrypted_done,
+            uploaded: encrypted_done,
+            cleanup: encrypted_done,
+            verified: false,
+        };
+
+        let active = ActiveBackupTask {
+            progress,
+            split_qty: 5,
+            base_snapshot: "base".to_string(),
+            ref_snapshot: "ref".to_string(),
+            full_hash: vec![1, 2, 3],
+        };
+
+        mock_io
+            .expect_load_target_queue()
+            .returning(move || Ok(queue.clone()));
+
+        mock_io
+            .expect_load_active_tasks()
+            .returning(move || Ok(active.clone()));
+
+        mock_io
+            .expect_load_latest_snapshot_map()
+            .returning(move || Ok(LatestSnapshotMap::default()));
+
+        let mut manager = StatusManager::new(Box::new(mock_io)).unwrap();
+        let result = manager.restore_status().unwrap();
+
+        assert_eq!(
+            result,
+            (BackupTaskStage::Encrypt, split_done as u64, encrypted_done)
+        );
+    }
+
+    #[test]
+    fn test_restore_status_upload_stage() {
+        let mut mock_io = MockFileIo::new();
+
+        let mut queue = VecDeque::new();
+        queue.push_back(BackupTarget {
+            date: Utc::now(),
+            backup_type: BackupType::Full,
+            dataset: "pool/data".to_string(),
+        });
+
+        let split_done = 3;
+        let compressed_done = split_done as u64;
+        let encrypted_done = split_done as u64;
+        let uploaded_done = 2;
+
+        let progress = BackupStageStatus {
+            snapshot_exported_name: "snapshot1".to_string(),
+            snapshot_tested: true,
+            split_hashes: (0..split_done)
+                .map(|i| vec![i as u8, (i + 1) as u8])
+                .collect(),
+            compressed: compressed_done,
+            encrypted: encrypted_done,
+            uploaded: uploaded_done,
+            cleanup: uploaded_done,
+            verified: false,
+        };
+
+        let active = ActiveBackupTask {
+            progress,
+            split_qty: 5,
+            base_snapshot: "base".to_string(),
+            ref_snapshot: "ref".to_string(),
+            full_hash: vec![1, 2, 3],
+        };
+
+        mock_io
+            .expect_load_target_queue()
+            .returning(move || Ok(queue.clone()));
+
+        mock_io
+            .expect_load_active_tasks()
+            .returning(move || Ok(active.clone()));
+
+        mock_io
+            .expect_load_latest_snapshot_map()
+            .returning(move || Ok(LatestSnapshotMap::default()));
+
+        let mut manager = StatusManager::new(Box::new(mock_io)).unwrap();
+        let result = manager.restore_status().unwrap();
+
+        assert_eq!(
+            result,
+            (BackupTaskStage::Upload, split_done as u64, uploaded_done)
+        );
+    }
+
+    #[test]
+    fn test_restore_status_cleanup_stage() {
+        let mut mock_io = MockFileIo::new();
+
+        let mut queue = VecDeque::new();
+        queue.push_back(BackupTarget {
+            date: Utc::now(),
+            backup_type: BackupType::Full,
+            dataset: "pool/data".to_string(),
+        });
+
+        let split_done = 3;
+        let compressed_done = split_done as u64;
+        let encrypted_done = split_done as u64;
+        let uploaded_done = split_done as u64;
+        let cleanup_done = 2;
+
+        let progress = BackupStageStatus {
+            snapshot_exported_name: "snapshot1".to_string(),
+            snapshot_tested: true,
+            split_hashes: (0..split_done)
+                .map(|i| vec![i as u8, (i + 1) as u8])
+                .collect(),
+            compressed: compressed_done,
+            encrypted: encrypted_done,
+            uploaded: uploaded_done,
+            cleanup: cleanup_done,
+            verified: false,
+        };
+
+        let active = ActiveBackupTask {
+            progress,
+            split_qty: 5,
+            base_snapshot: "base".to_string(),
+            ref_snapshot: "ref".to_string(),
+            full_hash: vec![1, 2, 3],
+        };
+
+        mock_io
+            .expect_load_target_queue()
+            .returning(move || Ok(queue.clone()));
+
+        mock_io
+            .expect_load_active_tasks()
+            .returning(move || Ok(active.clone()));
+
+        mock_io
+            .expect_load_latest_snapshot_map()
+            .returning(move || Ok(LatestSnapshotMap::default()));
+
+        let mut manager = StatusManager::new(Box::new(mock_io)).unwrap();
+        let result = manager.restore_status().unwrap();
+
+        assert_eq!(
+            result,
+            (BackupTaskStage::Cleanup, split_done as u64, cleanup_done)
+        );
+    }
+
+    #[test]
+    fn test_restore_status_verify_stage() {
+        let mut mock_io = MockFileIo::new();
+
+        let mut queue = VecDeque::new();
+        queue.push_back(BackupTarget {
+            date: Utc::now(),
+            backup_type: BackupType::Full,
+            dataset: "pool/data".to_string(),
+        });
+
+        let total_split_qty = 5;
+        let split_done = 5;
+        let processed = split_done as u64;
+
+        let progress = BackupStageStatus {
+            snapshot_exported_name: "snapshot1".to_string(),
+            snapshot_tested: true,
+            split_hashes: (0..split_done)
+                .map(|i| vec![i as u8, (i + 1) as u8])
+                .collect(),
+            compressed: processed,
+            encrypted: processed,
+            uploaded: processed,
+            cleanup: processed,
+            verified: false,
+        };
+
+        let active = ActiveBackupTask {
+            progress,
+            split_qty: total_split_qty,
+            base_snapshot: "base".to_string(),
+            ref_snapshot: "ref".to_string(),
+            full_hash: vec![1, 2, 3],
+        };
+
+        mock_io
+            .expect_load_target_queue()
+            .returning(move || Ok(queue.clone()));
+
+        mock_io
+            .expect_load_active_tasks()
+            .returning(move || Ok(active.clone()));
+
+        mock_io
+            .expect_load_latest_snapshot_map()
+            .returning(move || Ok(LatestSnapshotMap::default()));
+
+        let mut manager = StatusManager::new(Box::new(mock_io)).unwrap();
+        let result = manager.restore_status().unwrap();
+
+        assert_eq!(result, (BackupTaskStage::Verify, processed, 0));
+    }
+
+    #[test]
+    fn test_restore_status_done() {
+        let mut mock_io = MockFileIo::new();
+
+        let mut queue = VecDeque::new();
+        queue.push_back(BackupTarget {
+            date: Utc::now(),
+            backup_type: BackupType::Full,
+            dataset: "pool/data".to_string(),
+        });
+
+        let total_split_qty = 5;
+        let split_done = 5;
+        let processed = split_done as u64;
+
+        let progress = BackupStageStatus {
+            snapshot_exported_name: "snapshot1".to_string(),
+            snapshot_tested: true,
+            split_hashes: (0..split_done)
+                .map(|i| vec![i as u8, (i + 1) as u8])
+                .collect(),
+            compressed: processed,
+            encrypted: processed,
+            uploaded: processed,
+            cleanup: processed,
+            verified: true,
+        };
+
+        let active = ActiveBackupTask {
+            progress,
+            split_qty: total_split_qty,
+            base_snapshot: "base".to_string(),
+            ref_snapshot: "ref".to_string(),
+            full_hash: vec![1, 2, 3],
+        };
+
+        mock_io
+            .expect_load_target_queue()
+            .returning(move || Ok(queue.clone()));
+
+        mock_io
+            .expect_load_active_tasks()
+            .returning(move || Ok(active.clone()));
+
+        mock_io
+            .expect_load_latest_snapshot_map()
+            .returning(move || Ok(LatestSnapshotMap::default()));
+
+        let mut manager = StatusManager::new(Box::new(mock_io)).unwrap();
+        let result = manager.restore_status().unwrap();
+
+        assert_eq!(result, (BackupTaskStage::Done, 0, 0));
+    }
+
+    #[test]
+    fn test_restore_status_error_split_count() {
+        let mut mock_io = MockFileIo::new();
+
+        let mut queue = VecDeque::new();
+        queue.push_back(BackupTarget {
+            date: Utc::now(),
+            backup_type: BackupType::Full,
+            dataset: "pool/data".to_string(),
+        });
+
+        let total_split_qty = 5;
+        let split_done = 6;
+
+        let progress = BackupStageStatus {
+            snapshot_exported_name: "snapshot1".to_string(),
+            snapshot_tested: true,
+            split_hashes: (0..split_done)
+                .map(|i| vec![i as u8, (i + 1) as u8])
+                .collect(),
+            compressed: 0,
+            encrypted: 0,
+            uploaded: 0,
+            cleanup: 0,
+            verified: false,
+        };
+
+        let active = ActiveBackupTask {
+            progress,
+            split_qty: total_split_qty,
+            base_snapshot: "base".to_string(),
+            ref_snapshot: "ref".to_string(),
+            full_hash: vec![1, 2, 3],
+        };
+
+        mock_io
+            .expect_load_target_queue()
+            .returning(move || Ok(queue.clone()));
+
+        mock_io
+            .expect_load_active_tasks()
+            .returning(move || Ok(active.clone()));
+
+        mock_io
+            .expect_load_latest_snapshot_map()
+            .returning(move || Ok(LatestSnapshotMap::default()));
+
+        let mut manager = StatusManager::new(Box::new(mock_io)).unwrap();
+        let result = manager.restore_status();
+
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().to_string(), "split");
+    }
+
+    #[test]
+    fn test_restore_status_error_compression() {
+        let mut mock_io = MockFileIo::new();
+
+        let mut queue = VecDeque::new();
+        queue.push_back(BackupTarget {
+            date: Utc::now(),
+            backup_type: BackupType::Full,
+            dataset: "pool/data".to_string(),
+        });
+
+        let split_done = 3;
+        let compressed_done = 4;
+
+        let progress = BackupStageStatus {
+            snapshot_exported_name: "snapshot1".to_string(),
+            snapshot_tested: true,
+            split_hashes: (0..split_done)
+                .map(|i| vec![i as u8, (i + 1) as u8])
+                .collect(),
+            compressed: compressed_done,
+            encrypted: 0,
+            uploaded: 0,
+            cleanup: 0,
+            verified: false,
+        };
+
+        let active = ActiveBackupTask {
+            progress,
+            split_qty: 5,
+            base_snapshot: "base".to_string(),
+            ref_snapshot: "ref".to_string(),
+            full_hash: vec![1, 2, 3],
+        };
+
+        mock_io
+            .expect_load_target_queue()
+            .returning(move || Ok(queue.clone()));
+
+        mock_io
+            .expect_load_active_tasks()
+            .returning(move || Ok(active.clone()));
+
+        mock_io
+            .expect_load_latest_snapshot_map()
+            .returning(move || Ok(LatestSnapshotMap::default()));
+
+        let mut manager = StatusManager::new(Box::new(mock_io)).unwrap();
+        let result = manager.restore_status();
+
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().to_string(), "Error stage Compress");
+    }
+
+    #[test]
+    fn test_restore_status_error_encryption() {
+        let mut mock_io = MockFileIo::new();
+
+        let mut queue = VecDeque::new();
+        queue.push_back(BackupTarget {
+            date: Utc::now(),
+            backup_type: BackupType::Full,
+            dataset: "pool/data".to_string(),
+        });
+
+        let split_done = 3;
+        let compressed_done = split_done as u64;
+        let encrypted_done = 4;
+
+        let progress = BackupStageStatus {
+            snapshot_exported_name: "snapshot1".to_string(),
+            snapshot_tested: true,
+            split_hashes: (0..split_done)
+                .map(|i| vec![i as u8, (i + 1) as u8])
+                .collect(),
+            compressed: compressed_done,
+            encrypted: encrypted_done,
+            uploaded: 0,
+            cleanup: 0,
+            verified: false,
+        };
+
+        let active = ActiveBackupTask {
+            progress,
+            split_qty: 5,
+            base_snapshot: "base".to_string(),
+            ref_snapshot: "ref".to_string(),
+            full_hash: vec![1, 2, 3],
+        };
+
+        mock_io
+            .expect_load_target_queue()
+            .returning(move || Ok(queue.clone()));
+
+        mock_io
+            .expect_load_active_tasks()
+            .returning(move || Ok(active.clone()));
+
+        mock_io
+            .expect_load_latest_snapshot_map()
+            .returning(move || Ok(LatestSnapshotMap::default()));
+
+        let mut manager = StatusManager::new(Box::new(mock_io)).unwrap();
+        let result = manager.restore_status();
+
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().to_string(), "Error stage Encrypt");
+    }
+
+    #[test]
+    fn test_restore_status_error_upload() {
+        let mut mock_io = MockFileIo::new();
+
+        let mut queue = VecDeque::new();
+        queue.push_back(BackupTarget {
+            date: Utc::now(),
+            backup_type: BackupType::Full,
+            dataset: "pool/data".to_string(),
+        });
+
+        let split_done = 3;
+        let processed = split_done as u64;
+        let uploaded_done = 4;
+
+        let progress = BackupStageStatus {
+            snapshot_exported_name: "snapshot1".to_string(),
+            snapshot_tested: true,
+            split_hashes: (0..split_done)
+                .map(|i| vec![i as u8, (i + 1) as u8])
+                .collect(),
+            compressed: processed,
+            encrypted: processed,
+            uploaded: uploaded_done,
+            cleanup: 0,
+            verified: false,
+        };
+
+        let active = ActiveBackupTask {
+            progress,
+            split_qty: 5,
+            base_snapshot: "base".to_string(),
+            ref_snapshot: "ref".to_string(),
+            full_hash: vec![1, 2, 3],
+        };
+
+        mock_io
+            .expect_load_target_queue()
+            .returning(move || Ok(queue.clone()));
+
+        mock_io
+            .expect_load_active_tasks()
+            .returning(move || Ok(active.clone()));
+
+        mock_io
+            .expect_load_latest_snapshot_map()
+            .returning(move || Ok(LatestSnapshotMap::default()));
+
+        let mut manager = StatusManager::new(Box::new(mock_io)).unwrap();
+        let result = manager.restore_status();
+
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().to_string(), "Error stage Upload");
+    }
+
+    #[test]
+    fn test_restore_status_error_cleanup() {
+        let mut mock_io = MockFileIo::new();
+
+        let mut queue = VecDeque::new();
+        queue.push_back(BackupTarget {
+            date: Utc::now(),
+            backup_type: BackupType::Full,
+            dataset: "pool/data".to_string(),
+        });
+
+        let split_done = 3;
+        let processed = split_done as u64;
+        let cleanup_done = 4;
+
+        let progress = BackupStageStatus {
+            snapshot_exported_name: "snapshot1".to_string(),
+            snapshot_tested: true,
+            split_hashes: (0..split_done)
+                .map(|i| vec![i as u8, (i + 1) as u8])
+                .collect(),
+            compressed: processed,
+            encrypted: processed,
+            uploaded: processed,
+            cleanup: cleanup_done,
+            verified: false,
+        };
+
+        let active = ActiveBackupTask {
+            progress,
+            split_qty: 5,
+            base_snapshot: "base".to_string(),
+            ref_snapshot: "ref".to_string(),
+            full_hash: vec![1, 2, 3],
+        };
+
+        mock_io
+            .expect_load_target_queue()
+            .returning(move || Ok(queue.clone()));
+
+        mock_io
+            .expect_load_active_tasks()
+            .returning(move || Ok(active.clone()));
+
+        mock_io
+            .expect_load_latest_snapshot_map()
+            .returning(move || Ok(LatestSnapshotMap::default()));
+
+        let mut manager = StatusManager::new(Box::new(mock_io)).unwrap();
+        let result = manager.restore_status();
+
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().to_string(), "Error stage Cleanup");
     }
 }
