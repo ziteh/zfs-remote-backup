@@ -515,7 +515,11 @@ mod tests {
 
     #[test]
     fn test_restore_status_error_split_count() {
-        let mock_io = setup_restore_status_test(5, true, true, true, 6, 0, 0, 0, 0, false);
+        let total_splits = 5;
+        let split_qty = total_splits + 1;
+
+        let mock_io =
+            setup_restore_status_test(total_splits, true, true, true, split_qty, 0, 0, 0, 0, false);
 
         let mut manager = StatusManager::new(Box::new(mock_io)).unwrap();
         let result = manager.restore_status();
@@ -526,7 +530,22 @@ mod tests {
 
     #[test]
     fn test_restore_status_error_compression() {
-        let mock_io = setup_restore_status_test(5, true, true, true, 3, 4, 0, 0, 0, false);
+        let total_splits = 5;
+        let split_qty = 3;
+        let compressed_qty = split_qty + 1;
+
+        let mock_io = setup_restore_status_test(
+            total_splits,
+            true,
+            true,
+            true,
+            split_qty,
+            compressed_qty,
+            0,
+            0,
+            0,
+            false,
+        );
 
         let mut manager = StatusManager::new(Box::new(mock_io)).unwrap();
         let result = manager.restore_status();
@@ -537,7 +556,22 @@ mod tests {
 
     #[test]
     fn test_restore_status_error_encryption() {
-        let mock_io = setup_restore_status_test(5, true, true, true, 3, 3, 4, 0, 0, false);
+        let total_splits = 5;
+        let split_qty = 3;
+        let encrypted_qty = split_qty + 1;
+
+        let mock_io = setup_restore_status_test(
+            total_splits,
+            true,
+            true,
+            true,
+            split_qty,
+            split_qty,
+            encrypted_qty,
+            0,
+            0,
+            false,
+        );
 
         let mut manager = StatusManager::new(Box::new(mock_io)).unwrap();
         let result = manager.restore_status();
@@ -548,7 +582,22 @@ mod tests {
 
     #[test]
     fn test_restore_status_error_upload() {
-        let mock_io = setup_restore_status_test(5, true, true, true, 3, 3, 3, 4, 0, false);
+        let total_splits = 5;
+        let split_qty = 3;
+        let uploaded_qty = split_qty + 1;
+
+        let mock_io = setup_restore_status_test(
+            total_splits,
+            true,
+            true,
+            true,
+            split_qty,
+            split_qty,
+            split_qty,
+            uploaded_qty,
+            0,
+            false,
+        );
 
         let mut manager = StatusManager::new(Box::new(mock_io)).unwrap();
         let result = manager.restore_status();
@@ -559,7 +608,22 @@ mod tests {
 
     #[test]
     fn test_restore_status_error_cleanup() {
-        let mock_io = setup_restore_status_test(5, true, true, true, 3, 3, 3, 3, 4, false);
+        let total_splits = 5;
+        let split_qty = 3;
+        let cleanup_qty = split_qty + 1;
+
+        let mock_io = setup_restore_status_test(
+            total_splits,
+            true,
+            true,
+            true,
+            split_qty,
+            split_qty,
+            split_qty,
+            split_qty,
+            cleanup_qty,
+            false,
+        );
 
         let mut manager = StatusManager::new(Box::new(mock_io)).unwrap();
         let result = manager.restore_status();
