@@ -1,5 +1,5 @@
 use chrono::{DateTime, Utc};
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BackupType {
@@ -11,6 +11,12 @@ pub enum BackupType {
 
     /// Incremental backup
     Incr,
+}
+
+impl Default for BackupType {
+    fn default() -> Self {
+        BackupType::Full
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
