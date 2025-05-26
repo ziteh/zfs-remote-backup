@@ -1,5 +1,8 @@
 use chrono::{DateTime, Utc};
-use std::collections::{HashMap, VecDeque};
+use std::{
+    collections::{HashMap, VecDeque},
+    fmt::{self, write},
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BackupType {
@@ -16,6 +19,17 @@ pub enum BackupType {
 impl Default for BackupType {
     fn default() -> Self {
         BackupType::Full
+    }
+}
+
+impl fmt::Display for BackupType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let s = match self {
+            BackupType::Full => "Full",
+            BackupType::Diff => "Diff",
+            BackupType::Incr => "Incr",
+        };
+        write!(f, "{s}")
     }
 }
 
