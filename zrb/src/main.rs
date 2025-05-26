@@ -1,5 +1,6 @@
 mod backup_manager;
 mod compression;
+mod config;
 mod encryption;
 mod hash;
 mod remote;
