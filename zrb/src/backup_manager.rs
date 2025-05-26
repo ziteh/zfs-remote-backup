@@ -1,4 +1,5 @@
 use anyhow::{Error, anyhow};
+use chrono::{DateTime, Utc};
 use mockall::automock;
 use std::{
     os::linux::raw::stat,
@@ -80,6 +81,7 @@ impl BackupManager {
     }
 
     fn handle_snapshot_export(&mut self) -> Result<(), Error> {
+        // let _ = self.snapshot_mgr.export(out_dir, dataset, base_snapshot, ref_snapshot);
         todo!()
     }
 
@@ -113,5 +115,48 @@ impl BackupManager {
 
     fn handle_done(&mut self) -> Result<(), Error> {
         todo!()
+    }
+
+    fn get_dataset(&self) -> Result<String, Error> {
+        let target = self.status_mgr.get_target_queue().front().unwrap();
+        Ok(target.dataset.clone())
+    }
+
+    fn get_backup_type(&self) -> Result<BackupType, Error> {
+        let target = self.status_mgr.get_target_queue().front().unwrap();
+        Ok(target.backup_type.clone())
+    }
+
+    fn get_date(&self) -> Result<DateTime<Utc>, Error> {
+        let target = self.status_mgr.get_target_queue().front().unwrap();
+        Ok(target.date.clone())
+    }
+
+    fn get_base_snapshot(&self) -> Result<String, Error> {
+        let task = self.status_mgr.get_active_task();
+        Ok(task.base_snapshot.clone())
+    }
+
+    fn get_ref_snapshot(&self) -> Result<String, Error> {
+        let task = self.status_mgr.get_active_task();
+        Ok(task.ref_snapshot.clone())
+    }
+
+    fn get_temp_dir(&self) -> PathBuf {
+        let dataset = self.get_dataset().unwrap_or("unknown_dataset".to_string());
+        let backup_type = self
+            .get_backup_type()
+            .unwrap_or(BackupType::Full)
+            .to_string();
+        let date = self
+            .get_date()
+            .unwrap_or_else(|_| Utc::now())
+            .format("%Y-%m-%d")
+            .to_string();
+
+        let mut path = PathBuf::from("/tmp/");
+        path.push(dataset);
+        path.push(format!("{}_{}", backup_type, date));
+        path
     }
 }
