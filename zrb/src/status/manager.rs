@@ -36,6 +36,18 @@ impl StatusManager {
         })
     }
 
+    pub fn get_target_queue(&self) -> &BackupTargetQueue {
+        &self.target_queue
+    }
+
+    pub fn get_active_task(&self) -> &ActiveBackupTask {
+        &self.active_tasks
+    }
+
+    pub fn get_latest_snapshot_map(&self) -> &LatestSnapshotMap {
+        &self.latest_snapshot_map
+    }
+
     pub fn enqueue_target(&mut self, target: BackupTarget) -> Result<(), Error> {
         self.target_queue.push_back(target);
         self.io.save_target_queue(&self.target_queue)
