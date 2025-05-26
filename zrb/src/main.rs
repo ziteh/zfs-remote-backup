@@ -1,4 +1,5 @@
 mod compression;
+mod encryption;
 mod snapshot;
 mod status;
 
