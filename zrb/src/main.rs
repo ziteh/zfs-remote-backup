@@ -1,3 +1,4 @@
+mod backup_manager;
 mod compression;
 mod encryption;
 mod hash;
