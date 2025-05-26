@@ -1,5 +1,6 @@
-mod status;
+mod compression;
 mod snapshot;
+mod status;
 
 use crate::snapshot::*;
 use crate::status::model::*;
