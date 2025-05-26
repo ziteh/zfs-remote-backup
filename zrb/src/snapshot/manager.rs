@@ -18,20 +18,3 @@ pub trait SnapshotManager {
 
     fn list(&self, dataset: &str) -> Result<Vec<String>, Error>;
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use mockall::predicate::*;
-
-    #[test]
-    fn test_snapshot_manager_mock() {
-        let filename = "snapshot.zfs";
-
-        let mut mock = MockSnapshotManager::new();
-        mock.expect_get_filename()
-            .returning(|| filename.to_string());
-
-        assert_eq!(mock.get_filename(), filename);
-    }
-}
