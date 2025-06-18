@@ -127,4 +127,49 @@ impl StatusManager {
 
         Ok((BackupTaskStage::Split, total_split_qty, split_count))
     }
+
+    pub fn update_full_hash(&mut self, hash: Hash) -> Result<(), Error> {
+        self.active_tasks.full_hash = hash;
+        self.io.save_active_tasks(&self.active_tasks)
+    }
+
+    pub fn update_stage_status_snapshot_exported(&mut self, filename: String) -> Result<(), Error> {
+        self.active_tasks.progress.snapshot_exported_name = filename;
+        self.io.save_active_tasks(&self.active_tasks)
+    }
+
+    pub fn update_stage_status_snapshot_tested(&mut self, status: bool) -> Result<(), Error> {
+        self.active_tasks.progress.snapshot_tested = status;
+        self.io.save_active_tasks(&self.active_tasks)
+    }
+
+    pub fn update_stage_status_split_hashes(&mut self, hash: Hash) -> Result<(), Error> {
+        self.active_tasks.progress.split_hashes.push(hash);
+        self.io.save_active_tasks(&self.active_tasks)
+    }
+
+    pub fn update_stage_status_compressed(&mut self, count: u64) -> Result<(), Error> {
+        self.active_tasks.progress.compressed = count;
+        self.io.save_active_tasks(&self.active_tasks)
+    }
+
+    pub fn update_stage_status_encrypted(&mut self, count: u64) -> Result<(), Error> {
+        self.active_tasks.progress.encrypted = count;
+        self.io.save_active_tasks(&self.active_tasks)
+    }
+
+    pub fn update_stage_status_uploaded(&mut self, count: u64) -> Result<(), Error> {
+        self.active_tasks.progress.uploaded = count;
+        self.io.save_active_tasks(&self.active_tasks)
+    }
+
+    pub fn update_stage_status_cleanup(&mut self, count: u64) -> Result<(), Error> {
+        self.active_tasks.progress.cleanup = count;
+        self.io.save_active_tasks(&self.active_tasks)
+    }
+
+    pub fn update_stage_status_verified(&mut self, status: bool) -> Result<(), Error> {
+        self.active_tasks.progress.verified = status;
+        self.io.save_active_tasks(&self.active_tasks)
+    }
 }

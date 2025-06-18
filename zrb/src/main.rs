@@ -6,6 +6,7 @@ mod hash;
 mod remote;
 mod snapshot;
 mod status;
+mod splitter;
 
 use crate::snapshot::*;
 use crate::status::model::*;
