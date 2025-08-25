@@ -1,10 +1,11 @@
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 use std::{
     collections::{HashMap, VecDeque},
     fmt::{self, write},
 };
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum BackupType {
     /// Full backup
     Full,
@@ -33,7 +34,7 @@ impl fmt::Display for BackupType {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum BackupTaskStage {
     SnapshotExport,
     SnapshotTest,
@@ -49,7 +50,7 @@ pub enum BackupTaskStage {
 
 pub type Hash = Vec<u8>;
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct BackupStageStatus {
     /// Exporting snapshot name, empty if not exporting
     pub snapshot_exported_name: String,
@@ -76,7 +77,7 @@ pub struct BackupStageStatus {
     pub verified: bool,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ActiveBackupTask {
     pub base_snapshot: String,
     pub ref_snapshot: String,
@@ -85,7 +86,7 @@ pub struct ActiveBackupTask {
     pub full_hash: Hash,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct LatestSnapshotInfo {
     /// Latest snapshot date
     pub update: DateTime<Utc>,
@@ -97,7 +98,7 @@ pub struct LatestSnapshotInfo {
 /// Dataset name -> BackupType -> LatestSnapshotInfo
 pub type LatestSnapshotMap = HashMap<String, HashMap<BackupType, LatestSnapshotInfo>>;
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct BackupTarget {
     /// Target date
     pub date: DateTime<Utc>,
