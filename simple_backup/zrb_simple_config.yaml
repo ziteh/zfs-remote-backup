@@ -1,0 +1,6 @@
+
+pool: p1
+dataset: temp
+base_snapshot_name: manual-2025-11-18_21-08
+age_public_key: age1ed9kad8ddqpjnt7k50tmxu8ngxte5ghmwsse7ckt6kdtvc7afpkqlj5ddk
+export_dir: /mnt/p1/ds1/bk/

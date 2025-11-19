@@ -1,0 +1,11 @@
+# Go build artifacts
+zrb_simple
+
+# Snapshot parts
+snapshot.part-*
+
+# Encrypted files
+*.age
+
+# Go module cache
+go.sum
