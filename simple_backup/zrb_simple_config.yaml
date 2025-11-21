@@ -1,6 +1,12 @@
-
 pool: p1
 dataset: temp
 base_snapshot_name: manual-2025-11-18_21-08
 age_public_key: age1ed9kad8ddqpjnt7k50tmxu8ngxte5ghmwsse7ckt6kdtvc7afpkqlj5ddk
 export_dir: /mnt/p1/ds1/bk/
+s3:
+  enabled: true
+  bucket: my-backup-bucket
+  region: us-east-1
+  prefix: zfs-backups/
+  endpoint: "" # Leave empty for AWS S3, or specify custom endpoint for S3 compatible services
+  storage_class: "DEEP_ARCHIVE" # Options: STANDARD, INTELLIGENT_TIERING, STANDARD_IA, ONEZONE_IA, GLACIER, DEEP_ARCHIVE, GLACIER_IR
