@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	"filippo.io/age"
+	"flag"
 	"fmt"
 	"log"
 	"os"
@@ -10,10 +10,14 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"filippo.io/age"
 )
 
 func main() {
-	config, err := loadConfig("zrb_simple_config.yaml")
+	configPath := flag.String("config", "zrb_simple_config.yaml", "path to config file")
+	flag.Parse()
+
+	config, err := loadConfig(*configPath)
 	if err != nil {
 		log.Fatalf("Failed to load config: %v", err)
 	}
