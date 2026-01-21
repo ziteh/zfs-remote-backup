@@ -3,14 +3,15 @@ package main
 import (
 	"context"
 	"fmt"
+	"log"
+	"os"
+	"path/filepath"
+
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/feature/s3/manager"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
-	"log"
-	"os"
-	"path/filepath"
 )
 
 // RemoteBackend defines the interface for remote storage
@@ -20,11 +21,12 @@ type RemoteBackend interface {
 
 // S3Backend implements RemoteBackend for AWS S3
 type S3Backend struct {
-	client       *s3.Client
-	uploader     *manager.Uploader
-	bucket       string
-	prefix       string
-	storageClass types.StorageClass
+	client         *s3.Client
+	uploader       *manager.Uploader
+	bucket         string
+	prefix         string
+	storageClass   types.StorageClass
+	customEndpoint bool
 }
 
 // NewS3Backend creates a new S3 backend
@@ -58,11 +60,12 @@ func NewS3Backend(ctx context.Context, bucket, region, prefix, endpoint, storage
 	}
 
 	return &S3Backend{
-		client:       client,
-		uploader:     uploader,
-		bucket:       bucket,
-		prefix:       prefix,
-		storageClass: sc,
+		client:         client,
+		uploader:       uploader,
+		bucket:         bucket,
+		prefix:         prefix,
+		storageClass:   sc,
+		customEndpoint: endpoint != "",
 	}, nil
 }
 
@@ -76,14 +79,19 @@ func (s *S3Backend) Upload(ctx context.Context, localPath, remotePath string, sh
 
 	key := filepath.ToSlash(filepath.Join(s.prefix, remotePath))
 
-	_, err = s.uploader.Upload(ctx, &s3.PutObjectInput{
-		Bucket:            aws.String(s.bucket),
-		Key:               aws.String(key),
-		Body:              file,
-		ChecksumAlgorithm: types.ChecksumAlgorithmSha256,
-		ChecksumSHA256:    aws.String(sha256Hash),
-		StorageClass:      s.storageClass,
-	})
+	input := &s3.PutObjectInput{
+		Bucket:       aws.String(s.bucket),
+		Key:          aws.String(key),
+		Body:         file,
+		StorageClass: s.storageClass,
+	}
+	// Include checksum only if not using custom endpoint
+	if !s.customEndpoint && sha256Hash != "" {
+		input.ChecksumAlgorithm = types.ChecksumAlgorithmSha256
+		input.ChecksumSHA256 = aws.String(sha256Hash)
+	}
+
+	_, err = s.uploader.Upload(ctx, input)
 	if err != nil {
 		return fmt.Errorf("failed to upload to S3: %w", err)
 	}
