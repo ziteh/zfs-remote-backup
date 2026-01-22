@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"log"
 	"os"
@@ -10,14 +9,54 @@ import (
 	"sort"
 	"strings"
 	"time"
+
 	"filippo.io/age"
+	"github.com/urfave/cli/v3"
 )
 
 func main() {
-	configPath := flag.String("config", "zrb_simple_config.yaml", "path to config file")
-	flag.Parse()
+	cmd := &cli.Command{
+		Name:  "zrb_simple",
+		Usage: "ZFS Remote Backup",
+		Commands: []*cli.Command{
+			{
+				Name:  "genkey",
+				Usage: "Generate public and private key pair",
+				Action: func(ctx context.Context, cmd *cli.Command) error {
+					return generateKey(ctx)
+				},
+			},
+			{
+				Name:  "backup",
+				Usage: "Run backup task",
+				Action: func(ctx context.Context, cmd *cli.Command) error {
+					return runBackup(ctx)
+				},
+			},
+		},
+	}
 
-	config, err := loadConfig(*configPath)
+	if err := cmd.Run(context.Background(), os.Args); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func generateKey(ctx context.Context) error {
+	fmt.Println("Generating age public and private key pair...")
+
+
+	fmt.Println("Public key: age1xxxxxxxxxxxxx...")
+	fmt.Println("Private key: AGE-SECRET-KEY-1xxxxxxxxxxxxx...")
+	return nil
+}
+
+func runBackup(ctx context.Context) error {
+	fmt.Println("Running backup task...")
+
+	// configPath := flag.String("config", "zrb_simple_config.yaml", "path to config file")
+	// flag.Parse()
+
+	config, err := loadConfig("zrb_simple_config.yaml")
 	if err != nil {
 		log.Fatalf("Failed to load config: %v", err)
 	}
@@ -54,9 +93,9 @@ func main() {
 
 	// Initialize S3 backend if enabled
 	var backend RemoteBackend
-	ctx := context.Background()
+	ctxBg := context.Background()
 	if config.S3.Enabled {
-		s3Backend, err := NewS3Backend(ctx, config.S3.Bucket, config.S3.Region, config.S3.Prefix, config.S3.Endpoint, config.S3.StorageClass)
+		s3Backend, err := NewS3Backend(ctxBg, config.S3.Bucket, config.S3.Region, config.S3.Prefix, config.S3.Endpoint, config.S3.StorageClass)
 		if err != nil {
 			log.Fatalf("Failed to initialize S3 backend: %v", err)
 		}
@@ -82,7 +121,7 @@ func main() {
 		// Upload to remote backend if configured
 		if backend != nil {
 			remotePath := filepath.Join(config.Pool, config.Dataset, config.BaseSnapshotName, filepath.Base(encryptedFile))
-			if err := backend.Upload(ctx, encryptedFile, remotePath, sha256Hash); err != nil {
+			if err := backend.Upload(ctxBg, encryptedFile, remotePath, sha256Hash); err != nil {
 				log.Fatalf("Failed to upload %s: %v", encryptedFile, err)
 			}
 		}
@@ -121,10 +160,13 @@ func main() {
 			log.Fatalf("Failed to calculate manifest SHA256: %v", err)
 		}
 		remotePath := filepath.Join(config.Pool, config.Dataset, config.BaseSnapshotName, "backup_manifest.yaml")
-		if err := backend.Upload(ctx, manifestPath, remotePath, manifestSHA256); err != nil {
+		if err := backend.Upload(ctxBg, manifestPath, remotePath, manifestSHA256); err != nil {
 			log.Fatalf("Failed to upload manifest: %v", err)
 		}
 	}
 
 	log.Println("All parts processed successfully")
+
+	fmt.Println("Backup completed successfully!")
+	return nil
 }
