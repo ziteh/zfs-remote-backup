@@ -29,8 +29,16 @@ func main() {
 			{
 				Name:  "backup",
 				Usage: "Run backup task",
+				Flags: []cli.Flag{
+					&cli.StringFlag{
+						Name:  "config",
+						Usage: "path to configuration yaml file",
+						Value: "zrb_simple_config.yaml",
+					},
+				},
 				Action: func(ctx context.Context, cmd *cli.Command) error {
-					return runBackup(ctx)
+					configPath := cmd.String("config")
+					return runBackup(ctx, configPath)
 				},
 			},
 		},
@@ -61,13 +69,10 @@ func generateKey(ctx context.Context) error {
 	return nil
 }
 
-func runBackup(ctx context.Context) error {
+func runBackup(ctx context.Context, configPath string) error {
 	fmt.Println("Running backup task...")
 
-	// configPath := flag.String("config", "zrb_simple_config.yaml", "path to config file")
-	// flag.Parse()
-
-	config, err := loadConfig("zrb_simple_config.yaml")
+	config, err := loadConfig(configPath)
 	if err != nil {
 		log.Fatalf("Failed to load config: %v", err)
 	}
