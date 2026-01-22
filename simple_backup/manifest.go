@@ -59,3 +59,15 @@ func writeLastBackupManifest(filename string, last *LastBackup) error {
 
 	return os.WriteFile(filename, data, 0644)
 }
+
+func readLastBackupManifest(filename string) (*LastBackup, error) {
+	data, err := os.ReadFile(filename)
+	if err != nil {
+		return nil, err
+	}
+	var last LastBackup
+	if err := yaml.Unmarshal(data, &last); err != nil {
+		return nil, err
+	}
+	return &last, nil
+}

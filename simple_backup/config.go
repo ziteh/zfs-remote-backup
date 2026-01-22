@@ -47,13 +47,19 @@ type BackupManifest struct {
 	Parts            []PartInfo `yaml:"parts"`
 }
 
-type LastBackup struct {
+type BackupRef struct {
 	Datetime   int64  `yaml:"datetime"`
-	Pool       string `yaml:"pool"`
-	Dataset    string `yaml:"dataset"`
 	Snapshot   string `yaml:"snapshot"`
 	Manifest   string `yaml:"manifest"`
 	Blake3Hash string `yaml:"blake3_hash"`
+}
+
+type LastBackup struct {
+	Pool    string     `yaml:"pool"`
+	Dataset string     `yaml:"dataset"`
+	Full    *BackupRef `yaml:"full,omitempty"`
+	Diff    *BackupRef `yaml:"diff,omitempty"`
+	Incr    *BackupRef `yaml:"incr,omitempty"`
 }
 
 func loadConfig(filename string) (*Config, error) {

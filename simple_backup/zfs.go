@@ -15,10 +15,19 @@ import (
 )
 
 // runZfsSendAndSplit executes zfs send and splits the output into parts while computing BLAKE3 hash
-func runZfsSendAndSplit(snapshotPath, exportDir string) (string, error) {
-	log.Printf("Running: zfs send %s | tee >(blake3) | split -b 3G -a 4 - snapshot.part-", snapshotPath)
+func runZfsSendAndSplit(snapshotPath, baseSnapshot, exportDir string) (string, error) {
+	if baseSnapshot == "" {
+		log.Printf("Running: zfs send %s | tee >(blake3) | split -b 3G -a 4 - snapshot.part-", snapshotPath)
+	} else {
+		log.Printf("Running: zfs send -i %s %s | tee >(blake3) | split -b 3G -a 4 - snapshot.part-", baseSnapshot, snapshotPath)
+	}
 
-	zfsCmd := exec.Command("zfs", "send", snapshotPath)
+	var zfsCmd *exec.Cmd
+	if baseSnapshot == "" {
+		zfsCmd = exec.Command("zfs", "send", snapshotPath)
+	} else {
+		zfsCmd = exec.Command("zfs", "send", "-i", baseSnapshot, snapshotPath)
+	}
 
 	outputPattern := filepath.Join(exportDir, "snapshot.part-")
 	splitCmd := exec.Command("split", "-b", "3G", "-a", "4", "-", outputPattern)

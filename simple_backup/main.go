@@ -35,10 +35,16 @@ func main() {
 						Usage: "path to configuration yaml file",
 						Value: "zrb_simple_config.yaml",
 					},
+					&cli.StringFlag{
+						Name:  "type",
+						Usage: "Type of backup to perform (full, diff, incr).",
+						Value: "full",
+					},
 				},
 				Action: func(ctx context.Context, cmd *cli.Command) error {
 					configPath := cmd.String("config")
-					return runBackup(ctx, configPath)
+					backupType := cmd.String("type")
+					return runBackup(ctx, configPath, backupType)
 				},
 			},
 			{
@@ -96,7 +102,11 @@ func generateKey(ctx context.Context) error {
 	return nil
 }
 
-func runBackup(ctx context.Context, configPath string) error {
+func runBackup(ctx context.Context, configPath string, backupType string) error {
+	if backupType != "full" && backupType != "diff" && backupType != "incr" {
+		return fmt.Errorf("invalid backup type: %s", backupType)
+	}
+
 	fmt.Println("Running backup task...")
 
 	config, err := loadConfig(configPath)
@@ -119,7 +129,7 @@ func runBackup(ctx context.Context, configPath string) error {
 		}
 	}()
 
-	snapshots, err := listSnapshots(config.Pool, config.Dataset, "zrb_full")
+	snapshots, err := listSnapshots(config.Pool, config.Dataset, "zrb_"+backupType)
 	if err != nil {
 		log.Fatalf("Failed to list snapshots: %v", err)
 	}
@@ -135,8 +145,35 @@ func runBackup(ctx context.Context, configPath string) error {
 		log.Fatalf("Failed to create export directory: %v", err)
 	}
 
-	snapshotPath := fmt.Sprintf("%s/%s@%s", config.Pool, config.Dataset, latestSnapshot)
-	blake3Hash, err := runZfsSendAndSplit(snapshotPath, outputDir)
+	snapshotPath := latestSnapshot // TODO: refactor
+
+	// determine base snapshot for incremental sends when needed
+	lastPath := filepath.Join(config.ExportDir, config.Pool, config.Dataset, "last_backup.yaml")
+	var baseSnapshot string
+	if backupType == "diff" {
+		last, err := readLastBackupManifest(lastPath)
+		if err != nil || last == nil || last.Full == nil {
+			log.Fatalf("Failed to determine base for diff: no previous full backup recorded")
+		}
+		baseSnapshot = last.Full.Snapshot
+	} else if backupType == "incr" {
+		last, err := readLastBackupManifest(lastPath)
+		if err != nil || last == nil {
+			log.Fatalf("Failed to determine base for incr: no last backup record")
+		}
+		// prefer most recent: incr > diff > full
+		if last.Incr != nil {
+			baseSnapshot = last.Incr.Snapshot
+		} else if last.Diff != nil {
+			baseSnapshot = last.Diff.Snapshot
+		} else if last.Full != nil {
+			baseSnapshot = last.Full.Snapshot
+		} else {
+			log.Fatalf("Failed to determine base for incr: no prior backups recorded")
+		}
+	}
+
+	blake3Hash, err := runZfsSendAndSplit(snapshotPath, baseSnapshot, outputDir)
 	if err != nil {
 		log.Fatalf("Failed to run zfs send and split: %v", err)
 	}
@@ -234,15 +271,29 @@ func runBackup(ctx context.Context, configPath string) error {
 		}
 	}
 
-	last := LastBackup{
+	// update last_backup.yaml preserving other fields if present
+	lastPath = filepath.Join(config.ExportDir, config.Pool, config.Dataset, "last_backup.yaml")
+	var last LastBackup
+	if existing, err := readLastBackupManifest(lastPath); err == nil && existing != nil {
+		last = *existing
+	}
+	last.Pool = config.Pool
+	last.Dataset = config.Dataset
+	ref := &BackupRef{
 		Datetime:   time.Now().Unix(),
-		Pool:       config.Pool,
-		Dataset:    config.Dataset,
 		Snapshot:   latestSnapshot,
 		Manifest:   manifestPath,
 		Blake3Hash: blake3Hash,
 	}
-	lastPath := filepath.Join(config.ExportDir, config.Pool, config.Dataset, "last_backup.yaml")
+	switch backupType {
+	case "full":
+		last.Full = ref
+	case "diff":
+		last.Diff = ref
+	case "incr":
+		last.Incr = ref
+	}
+
 	if err := writeLastBackupManifest(lastPath, &last); err != nil {
 		log.Printf("Warning: Failed to write last backup manifest: %v", err)
 	} else {
