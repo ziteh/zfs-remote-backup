@@ -2,10 +2,11 @@ package main
 
 import (
 	"encoding/json"
-	"gopkg.in/yaml.v3"
 	"os"
 	"os/exec"
 	"strings"
+
+	"gopkg.in/yaml.v3"
 )
 
 // getSystemInfo retrieves the OS and ZFS version information

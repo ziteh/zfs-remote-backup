@@ -2,12 +2,13 @@ package main
 
 import (
 	"fmt"
-	"github.com/zeebo/blake3"
 	"io"
 	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
+
+	"github.com/zeebo/blake3"
 )
 
 // runZfsSendAndSplit executes zfs send and splits the output into parts while computing BLAKE3 hash

@@ -2,11 +2,12 @@ package main
 
 import (
 	"crypto/sha256"
-	"filippo.io/age"
 	"fmt"
 	"io"
 	"log"
 	"os"
+
+	"filippo.io/age"
 )
 
 // processPartFile encrypts a snapshot part, calculates SHA256, and removes the original
