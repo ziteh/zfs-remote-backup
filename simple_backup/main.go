@@ -44,9 +44,20 @@ func main() {
 func generateKey(ctx context.Context) error {
 	fmt.Println("Generating age public and private key pair...")
 
+	identity, err := age.GenerateX25519Identity()
+	if err != nil {
+		return fmt.Errorf("failed to generate key pair: %w", err)
+	}
 
-	fmt.Println("Public key: age1xxxxxxxxxxxxx...")
-	fmt.Println("Private key: AGE-SECRET-KEY-1xxxxxxxxxxxxx...")
+	publicKey := identity.Recipient().String()
+	privateKey := identity.String()
+
+	// TODO: Securely store this key
+	fmt.Println("\n=== Age Key Pair Generated ===")
+	fmt.Printf("Public key:  %s\n", publicKey)
+	fmt.Printf("Private key: %s\n", privateKey)
+	fmt.Println("\n!! Keep your private key secure !!")
+
 	return nil
 }
 
