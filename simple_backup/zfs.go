@@ -22,6 +22,8 @@ func runZfsSendAndSplit(snapshotPath, baseSnapshot, exportDir string) (string, e
 		log.Printf("Running: zfs send -i %s %s | tee >(blake3) | split -b 3G -a 4 - snapshot.part-", baseSnapshot, snapshotPath)
 	}
 
+	// TODO: zfs hold and release around send
+	// TODO: -L for large blocks? -c for compressed send? -p for progress?
 	var zfsCmd *exec.Cmd
 	if baseSnapshot == "" {
 		zfsCmd = exec.Command("zfs", "send", snapshotPath)
