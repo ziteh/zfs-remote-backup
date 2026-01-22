@@ -77,6 +77,21 @@ func runBackup(ctx context.Context, configPath string) error {
 		log.Fatalf("Failed to load config: %v", err)
 	}
 
+	if err := os.MkdirAll(config.ExportDir, 0755); err != nil {
+		log.Fatalf("Failed to create export directory: %v", err)
+	}
+
+	lockPath := filepath.Join(config.ExportDir, "locks.yaml")
+	releaseLock, err := AcquireLock(lockPath, config.Pool, config.Dataset)
+	if err != nil {
+		log.Fatalf("Failed to acquire lock: %v", err)
+	}
+	defer func() {
+		if err := releaseLock(); err != nil {
+			log.Printf("Warning: Failed to release lock: %v", err)
+		}
+	}()
+
 	outputDir := filepath.Join(config.ExportDir, config.Pool, config.Dataset, config.BaseSnapshotName)
 	if err := os.MkdirAll(outputDir, 0755); err != nil {
 		log.Fatalf("Failed to create export directory: %v", err)
