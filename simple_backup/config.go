@@ -47,6 +47,15 @@ type BackupManifest struct {
 	Parts            []PartInfo `yaml:"parts"`
 }
 
+type LastBackup struct {
+	Datetime   int64  `yaml:"datetime"`
+	Pool       string `yaml:"pool"`
+	Dataset    string `yaml:"dataset"`
+	Snapshot   string `yaml:"snapshot"`
+	Manifest   string `yaml:"manifest"`
+	Blake3Hash string `yaml:"blake3_hash"`
+}
+
 func loadConfig(filename string) (*Config, error) {
 	data, err := os.ReadFile(filename)
 	if err != nil {

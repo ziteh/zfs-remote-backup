@@ -42,7 +42,7 @@ func main() {
 				},
 			},
 			{
-				Name: "snapshot",
+				Name:  "snapshot",
 				Usage: "Create a ZFS snapshot for the specified pool and dataset",
 				Flags: []cli.Flag{
 					&cli.StringFlag{
@@ -119,7 +119,7 @@ func runBackup(ctx context.Context, configPath string) error {
 		}
 	}()
 
-	snapshots , err := listSnapshots(config.Pool, config.Dataset, "zrb_full")
+	snapshots, err := listSnapshots(config.Pool, config.Dataset, "zrb_full")
 	if err != nil {
 		log.Fatalf("Failed to list snapshots: %v", err)
 	}
@@ -232,6 +232,21 @@ func runBackup(ctx context.Context, configPath string) error {
 		if err := backend.Upload(ctxBg, manifestPath, remotePath, manifestSHA256); err != nil {
 			log.Fatalf("Failed to upload manifest: %v", err)
 		}
+	}
+
+	last := LastBackup{
+		Datetime:   time.Now().Unix(),
+		Pool:       config.Pool,
+		Dataset:    config.Dataset,
+		Snapshot:   latestSnapshot,
+		Manifest:   manifestPath,
+		Blake3Hash: blake3Hash,
+	}
+	lastPath := filepath.Join(config.ExportDir, config.Pool, config.Dataset, "last_backup.yaml")
+	if err := writeLastBackupManifest(lastPath, &last); err != nil {
+		log.Printf("Warning: Failed to write last backup manifest: %v", err)
+	} else {
+		log.Printf("Last backup manifest written to: %s", lastPath)
 	}
 
 	log.Println("All parts processed successfully")

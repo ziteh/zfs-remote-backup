@@ -50,3 +50,12 @@ func writeManifest(filename string, manifest *BackupManifest) error {
 
 	return os.WriteFile(filename, data, 0644)
 }
+
+func writeLastBackupManifest(filename string, last *LastBackup) error {
+	data, err := yaml.Marshal(last)
+	if err != nil {
+		return err
+	}
+
+	return os.WriteFile(filename, data, 0644)
+}
