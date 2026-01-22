@@ -41,6 +41,33 @@ func main() {
 					return runBackup(ctx, configPath)
 				},
 			},
+			{
+				Name: "snapshot",
+				Usage: "Create a ZFS snapshot for the specified pool and dataset",
+				Flags: []cli.Flag{
+					&cli.StringFlag{
+						Name:     "pool",
+						Usage:    "ZFS pool name",
+						Required: true,
+					},
+					&cli.StringFlag{
+						Name:     "dataset",
+						Usage:    "ZFS dataset name",
+						Required: true,
+					},
+					&cli.StringFlag{
+						Name:  "prefix",
+						Usage: "Snapshot name prefix",
+						Value: "zrb",
+					},
+				},
+				Action: func(ctx context.Context, cmd *cli.Command) error {
+					pool := cmd.String("pool")
+					dataset := cmd.String("dataset")
+					prefix := cmd.String("prefix")
+					return createSnapshot(pool, dataset, prefix)
+				},
+			},
 		},
 	}
 

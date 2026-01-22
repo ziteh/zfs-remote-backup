@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/zeebo/blake3"
 )
@@ -92,6 +93,17 @@ func listSnapshots(pool, dataset, prefix string) ([]string, error) {
 	})
 
 	return snapshots, nil
+}
+
+func createSnapshot(pool, dataset, prefix string) error {
+	// Snapshot name format: dataset@prefix_YYYY-MM-DD_HH-MM
+	date := time.Now().Format("2006-01-02_15-04")
+	fullSnapshotName := fmt.Sprintf("%s/%s@%s_%s", pool, dataset, prefix, date)
+
+	cmd := exec.Command("zfs", "snapshot", fullSnapshotName)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
 }
 
 // calculateBLAKE3 computes the BLAKE3 hash of a file
