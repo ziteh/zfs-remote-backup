@@ -7,6 +7,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
+	"strings"
 
 	"github.com/zeebo/blake3"
 )
@@ -49,6 +51,47 @@ func runZfsSendAndSplit(snapshotPath, exportDir string) (string, error) {
 	blake3Hash := fmt.Sprintf("%x", hasher.Sum(nil))
 	log.Println("ZFS send and split completed")
 	return blake3Hash, nil
+}
+
+func listSnapshots(pool, dataset, prefix string) ([]string, error) {
+	// Snapshot name format: dataset@prefix_YYYY-MM-DD_HH-MM
+	cmd := exec.Command(
+		"zfs",
+		"list",
+		"-H", // scripting mode
+		"-o",
+		"name", // GUID?
+		"-t",
+		"snapshot",
+		fmt.Sprintf("%s/%s", pool, dataset),
+	)
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, err
+	}
+
+	var snapshots []string
+	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
+	for _, line := range lines {
+		parts := strings.SplitN(line, "@", 2)
+		if len(parts) != 2 {
+			continue
+		}
+
+		snapName := parts[1]
+		if prefix != "" && !strings.HasPrefix(snapName, prefix) {
+			continue
+		}
+
+		snapshots = append(snapshots, line)
+	}
+
+	// Lexicographical order == chronological order
+	sort.SliceStable(snapshots, func(i, j int) bool {
+		return snapshots[i] > snapshots[j]
+	})
+
+	return snapshots, nil
 }
 
 // calculateBLAKE3 computes the BLAKE3 hash of a file

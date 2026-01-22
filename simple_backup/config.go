@@ -7,12 +7,11 @@ import (
 )
 
 type Config struct {
-	Pool             string   `yaml:"pool"`
-	Dataset          string   `yaml:"dataset"`
-	BaseSnapshotName string   `yaml:"base_snapshot_name"`
-	AgePublicKey     string   `yaml:"age_public_key"`
-	ExportDir        string   `yaml:"export_dir"`
-	S3               S3Config `yaml:"s3"`
+	Pool         string   `yaml:"pool"`
+	Dataset      string   `yaml:"dataset"`
+	AgePublicKey string   `yaml:"age_public_key"`
+	ExportDir    string   `yaml:"export_dir"`
+	S3           S3Config `yaml:"s3"`
 }
 
 type S3Config struct {

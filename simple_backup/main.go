@@ -92,12 +92,23 @@ func runBackup(ctx context.Context, configPath string) error {
 		}
 	}()
 
-	outputDir := filepath.Join(config.ExportDir, config.Pool, config.Dataset, config.BaseSnapshotName)
+	snapshots , err := listSnapshots(config.Pool, config.Dataset, "zrb_full")
+	if err != nil {
+		log.Fatalf("Failed to list snapshots: %v", err)
+	}
+	if len(snapshots) == 0 {
+		log.Fatalf("No snapshots found for %s/%s", config.Pool, config.Dataset)
+	}
+
+	latestSnapshot := snapshots[len(snapshots)-1]
+	log.Printf("Latest snapshot found: %s", latestSnapshot)
+
+	outputDir := filepath.Join(config.ExportDir, config.Pool, config.Dataset, latestSnapshot)
 	if err := os.MkdirAll(outputDir, 0755); err != nil {
 		log.Fatalf("Failed to create export directory: %v", err)
 	}
 
-	snapshotPath := fmt.Sprintf("%s/%s@%s", config.Pool, config.Dataset, config.BaseSnapshotName)
+	snapshotPath := fmt.Sprintf("%s/%s@%s", config.Pool, config.Dataset, latestSnapshot)
 	blake3Hash, err := runZfsSendAndSplit(snapshotPath, outputDir)
 	if err != nil {
 		log.Fatalf("Failed to run zfs send and split: %v", err)
@@ -151,7 +162,7 @@ func runBackup(ctx context.Context, configPath string) error {
 
 		// Upload to remote backend if configured
 		if backend != nil {
-			remotePath := filepath.Join(config.Pool, config.Dataset, config.BaseSnapshotName, filepath.Base(encryptedFile))
+			remotePath := filepath.Join(config.Pool, config.Dataset, latestSnapshot, filepath.Base(encryptedFile))
 			if err := backend.Upload(ctxBg, encryptedFile, remotePath, sha256Hash); err != nil {
 				log.Fatalf("Failed to upload %s: %v", encryptedFile, err)
 			}
@@ -172,7 +183,7 @@ func runBackup(ctx context.Context, configPath string) error {
 		System:           systemInfo,
 		Pool:             config.Pool,
 		Dataset:          config.Dataset,
-		BaseSnapshotName: config.BaseSnapshotName,
+		BaseSnapshotName: latestSnapshot,
 		AgePublicKey:     config.AgePublicKey,
 		Blake3Hash:       blake3Hash,
 		Parts:            partInfos,
@@ -190,7 +201,7 @@ func runBackup(ctx context.Context, configPath string) error {
 		if err != nil {
 			log.Fatalf("Failed to calculate manifest SHA256: %v", err)
 		}
-		remotePath := filepath.Join(config.Pool, config.Dataset, config.BaseSnapshotName, "backup_manifest.yaml")
+		remotePath := filepath.Join(config.Pool, config.Dataset, latestSnapshot, "backup_manifest.yaml")
 		if err := backend.Upload(ctxBg, manifestPath, remotePath, manifestSHA256); err != nil {
 			log.Fatalf("Failed to upload manifest: %v", err)
 		}
