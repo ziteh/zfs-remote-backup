@@ -4,6 +4,7 @@ import (
 	"os"
 
 	"gopkg.in/yaml.v3"
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 )
 
 type BackupTask struct {
@@ -21,11 +22,11 @@ type Config struct {
 	Tasks        []BackupTask `yaml:"tasks"`
 }
 
-type StorageClass struct {
-	FullBackup string `yaml:"full_backup"`
-	DiffBackup string `yaml:"diff_backup"`
-	IncrBackup string `yaml:"incr_backup"`
-	Manifest   string `yaml:"manifest"`
+type StorageClassSet struct {
+	FullBackup types.StorageClass `yaml:"full_backup"`
+	DiffBackup types.StorageClass `yaml:"diff_backup"`
+	IncrBackup types.StorageClass `yaml:"incr_backup"`
+	Manifest   types.StorageClass `yaml:"manifest"`
 }
 
 type S3Config struct {
@@ -34,7 +35,7 @@ type S3Config struct {
 	Prefix       string       `yaml:"prefix"`
 	Region       string       `yaml:"region"`
 	Endpoint     string       `yaml:"endpoint"` // For S3 compatible services
-	StorageClass StorageClass `yaml:"storage_class"`
+	StorageClass StorageClassSet `yaml:"storage_class"`
 }
 
 type PartInfo struct {

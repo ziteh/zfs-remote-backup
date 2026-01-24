@@ -30,7 +30,7 @@ type S3Backend struct {
 }
 
 // NewS3Backend creates a new S3 backend
-func NewS3Backend(ctx context.Context, bucket, region, prefix, endpoint, storageClass string) (*S3Backend, error) {
+func NewS3Backend(ctx context.Context, bucket, region, prefix, endpoint string, storageClass types.StorageClass) (*S3Backend, error) {
 	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region))
 	if err != nil {
 		return nil, fmt.Errorf("failed to load AWS config: %w", err)

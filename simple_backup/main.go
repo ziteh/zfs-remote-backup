@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"filippo.io/age"
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/urfave/cli/v3"
 )
 
@@ -264,7 +265,7 @@ func runBackup(ctx context.Context, configPath string, backupType string, taskNa
 	var manifestBackend RemoteBackend = nil
 	ctxBg := context.Background()
 	if config.S3.Enabled {
-		var storageClass string
+		var storageClass types.StorageClass
 		switch backupType {
 		case "full":
 			storageClass = config.S3.StorageClass.FullBackup

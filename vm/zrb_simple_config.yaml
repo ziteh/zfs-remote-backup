@@ -1,7 +1,7 @@
 base_dir: /tmp/zrb_backups/
 age_public_key: age1ed9kad8ddqpjnt7k50tmxu8ngxte5ghmwsse7ckt6kdtvc7afpkqlj5ddk
 s3:
-  enabled: false
+  enabled: true
   bucket: my-backup-bucket
   prefix: zfs-backups
   region: us-east-1
