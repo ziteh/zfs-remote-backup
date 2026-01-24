@@ -114,8 +114,9 @@ func runBackup(_ context.Context, configPath string, backupType string, taskName
 	if backupType != "full" && backupType != "diff" && backupType != "incr" {
 		return fmt.Errorf("invalid backup type: %s", backupType)
 	}
-
-	fmt.Println("Running backup task...")
+	if taskName == "" {
+		return fmt.Errorf("task name must be specified")
+	}
 
 	config, err := loadConfig(configPath)
 	if err != nil {
@@ -141,6 +142,7 @@ func runBackup(_ context.Context, configPath string, backupType string, taskName
 		log.Fatalf("Failed to create export directory: %v", err)
 	}
 
+	// Set up logging
 	logDir := filepath.Join(config.BaseDir, "logs", task.Pool, task.Dataset)
 	if err := os.MkdirAll(logDir, 0755); err != nil {
 		log.Fatalf("Failed to create log directory: %v", err)
@@ -155,11 +157,14 @@ func runBackup(_ context.Context, configPath string, backupType string, taskName
 	slog.SetDefault(logger)
 	logger.Info("Backup started", "type", backupType, "pool", task.Pool, "dataset", task.Dataset)
 
+	// Prepare run directory
 	runDir := filepath.Join(config.BaseDir, "run", task.Pool, task.Dataset)
 	if err := os.MkdirAll(runDir, 0755); err != nil {
 		logger.Error("Failed to create run directory", "error", err)
 		log.Fatalf("Failed to create run directory: %v", err)
 	}
+
+	// Acquire lock for this pool/dataset
 	lockPath := filepath.Join(runDir, "zrb.lock")
 	releaseLock, err := AcquireLock(lockPath, task.Pool, task.Dataset)
 	if err != nil {
@@ -173,6 +178,7 @@ func runBackup(_ context.Context, configPath string, backupType string, taskName
 		}
 	}()
 
+	// Find latest snapshot
 	snapshots, err := listSnapshots(task.Pool, task.Dataset, "zrb_"+backupType)
 	if err != nil {
 		logger.Error("Failed to list snapshots", "error", err)
@@ -182,10 +188,11 @@ func runBackup(_ context.Context, configPath string, backupType string, taskName
 		logger.Error("No snapshots found", "pool", task.Pool, "dataset", task.Dataset)
 		log.Fatalf("No snapshots found for %s/%s", task.Pool, task.Dataset)
 	}
-
 	latestSnapshot := snapshots[len(snapshots)-1]
+	targetSnapshot := latestSnapshot // TODO: refactor
 	logger.Info("Latest snapshot found", "snapshot", latestSnapshot)
 
+	// Prepare output directory
 	taskDirName := fmt.Sprintf("%s_%s", backupType, time.Now().Format("20060102"))
 	outputDir := filepath.Join(config.BaseDir, "task", task.Pool, task.Dataset, taskDirName)
 	// Clean up output directory if it exists
@@ -196,15 +203,12 @@ func runBackup(_ context.Context, configPath string, backupType string, taskName
 			log.Fatalf("Failed to remove existing output directory: %v", err)
 		}
 	}
-
 	if err := os.MkdirAll(outputDir, 0755); err != nil {
 		logger.Error("Failed to create export directory", "error", err)
 		log.Fatalf("Failed to create export directory: %v", err)
 	}
 
-	targetSnapshot := latestSnapshot // TODO: refactor
-
-	// determine base snapshot for incremental sends when needed
+	// Determine parent snapshot for diff/incr backups
 	lastPath := filepath.Join(config.BaseDir, "run", task.Pool, task.Dataset, "last_backup_manifest.yaml")
 	var parentSnapshot string = ""
 	switch backupType {
@@ -234,6 +238,7 @@ func runBackup(_ context.Context, configPath string, backupType string, taskName
 		}
 	}
 
+	// Run zfs send and split
 	blake3Hash, err := runZfsSendAndSplit(targetSnapshot, parentSnapshot, outputDir)
 	if err != nil {
 		logger.Error("Failed to run zfs send and split", "error", err)
@@ -241,12 +246,12 @@ func runBackup(_ context.Context, configPath string, backupType string, taskName
 	}
 	logger.Info("Snapshot BLAKE3", "hash", blake3Hash)
 
+	// Process snapshot parts
 	parts, err := filepath.Glob(filepath.Join(outputDir, "snapshot.part-*"))
 	if err != nil {
 		logger.Error("Failed to find snapshot parts", "error", err)
 		log.Fatalf("Failed to find snapshot parts: %v", err)
 	}
-
 	var rawParts []string
 	for _, part := range parts {
 		if !strings.HasSuffix(part, ".age") {
@@ -255,6 +260,7 @@ func runBackup(_ context.Context, configPath string, backupType string, taskName
 	}
 	sort.Strings(rawParts)
 
+	// Encryption setup
 	recipient, err := age.ParseX25519Recipient(config.AgePublicKey)
 	if err != nil {
 		logger.Error("Failed to parse age public key", "error", err)
@@ -291,6 +297,7 @@ func runBackup(_ context.Context, configPath string, backupType string, taskName
 		logger.Info("S3 backend for manifests initialized", "bucket", config.S3.Bucket, "region", config.S3.Region, "prefix", config.S3.Prefix)
 	}
 
+	// Encrypt and upload parts
 	var partInfos []PartInfo
 	for _, partFile := range rawParts {
 		sha256Hash, encryptedFile, err := processPartFile(partFile, recipient)
@@ -316,6 +323,7 @@ func runBackup(_ context.Context, configPath string, backupType string, taskName
 		}
 	}
 
+	// Create and write manifest
 	systemInfo, err := getSystemInfo()
 	if err != nil {
 		logger.Warn("Failed to get system info", "error", err)
@@ -325,7 +333,6 @@ func runBackup(_ context.Context, configPath string, backupType string, taskName
 		systemInfo.ZFSVersion.Userland = "unknown"
 		systemInfo.ZFSVersion.Kernel = "unknown"
 	}
-
 	manifest := BackupManifest{
 		Datetime:       time.Now().Unix(),
 		System:         systemInfo,
@@ -338,8 +345,6 @@ func runBackup(_ context.Context, configPath string, backupType string, taskName
 		Blake3Hash:     blake3Hash,
 		Parts:          partInfos,
 	}
-
-	// task manifest name
 	manifestPath := filepath.Join(outputDir, "task_manifest.yaml")
 	if err := writeManifest(manifestPath, &manifest); err != nil {
 		logger.Error("Failed to write manifest", "error", err)
@@ -361,6 +366,7 @@ func runBackup(_ context.Context, configPath string, backupType string, taskName
 		}
 	}
 
+	// Update last backup manifest
 	lastPath = filepath.Join(config.BaseDir, "run", task.Pool, task.Dataset, "last_backup_manifest.yaml")
 	var last LastBackup
 	if existing, err := readLastBackupManifest(lastPath); err == nil && existing != nil {
@@ -382,13 +388,13 @@ func runBackup(_ context.Context, configPath string, backupType string, taskName
 	case "incr":
 		last.Incr = ref
 	}
-
 	if err := writeLastBackupManifest(lastPath, &last); err != nil {
 		logger.Warn("Failed to write last backup manifest", "error", err)
 	} else {
 		logger.Info("Last backup manifest written", "path", lastPath)
 	}
 
+	// Upload last backup manifest to S3
 	if manifestBackend != nil {
 		if lastSHA, err := calculateSHA256(lastPath); err == nil {
 			remoteLastPath := filepath.Join("manifests", task.Pool, task.Dataset, "last_backup_manifest.yaml")
@@ -402,7 +408,7 @@ func runBackup(_ context.Context, configPath string, backupType string, taskName
 		}
 	}
 
-	// Clean up local files if S3 is used
+	// Clean up local files
 	if backend != nil {
 		logger.Info("Cleaning up local backup files", "path", outputDir)
 		if err := os.RemoveAll(outputDir); err != nil {
