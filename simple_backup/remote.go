@@ -57,7 +57,12 @@ func NewS3Backend(ctx context.Context, bucket, region, prefix, endpoint string, 
 		client = s3.NewFromConfig(cfg)
 	}
 
-	uploader := manager.NewUploader(client)
+	uploader := manager.NewUploader(client, func(u *manager.Uploader) {
+		// 64MB
+		u.PartSize = 64 * 1024 * 1024
+		// Checksum is always calculated if supported. (Default)
+		u.RequestChecksumCalculation = aws.RequestChecksumCalculationWhenSupported
+	})
 
 	// Parse storage class
 	var sc types.StorageClass
@@ -94,11 +99,12 @@ func (s *S3Backend) Upload(ctx context.Context, localPath, remotePath string, sh
 		Body:         file,
 		StorageClass: s.storageClass,
 	}
+	// TODO: Add to metadata?
 	// Include checksum only if not using custom endpoint
-	if !s.customEndpoint && sha256Hash != "" {
-		input.ChecksumAlgorithm = types.ChecksumAlgorithmSha256
-		input.ChecksumSHA256 = aws.String(sha256Hash)
-	}
+	// if !s.customEndpoint && sha256Hash != "" {
+	// 	input.ChecksumAlgorithm = types.ChecksumAlgorithmSha256
+	// 	input.ChecksumSHA256 = aws.String(sha256Hash)
+	// }
 
 	_, err = s.uploader.Upload(ctx, input)
 	if err != nil {
