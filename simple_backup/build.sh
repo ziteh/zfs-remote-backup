@@ -1,5 +1,7 @@
 #!/bin/bash
 
+go build -o build/zrb_simple
+
 # For TrueNAS CE (Debian based)
 GOOS=linux GOARCH=amd64 go build -o build/zrb_simple_linux_amd64
 
