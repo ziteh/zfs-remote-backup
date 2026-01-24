@@ -119,8 +119,11 @@ func runBackup(ctx context.Context, configPath string, backupType string) error 
 		log.Fatalf("Failed to create export directory: %v", err)
 	}
 
-	// TODO: change path to /var/log/zrb/XXX_YYYY-MM-DD.log ? and ENV override?
-	logPath := filepath.Join(config.ExportDir, config.Pool, config.Dataset, fmt.Sprintf("zrb_backup_%s.log", time.Now().Format("2006-01-02")))
+	logDir := filepath.Join(config.ExportDir, "logs", config.Pool, config.Dataset)
+	if err := os.MkdirAll(logDir, 0755); err != nil {
+		log.Fatalf("Failed to create log directory: %v", err)
+	}
+	logPath := filepath.Join(logDir, fmt.Sprintf("%s.log", time.Now().Format("2006-01-02")))
 	file, err := os.OpenFile(logPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
 	if err != nil {
 		log.Fatalf("Failed to open log file: %v", err)
@@ -130,7 +133,12 @@ func runBackup(ctx context.Context, configPath string, backupType string) error 
 	slog.SetDefault(logger)
 	logger.Info("Backup started", "type", backupType, "pool", config.Pool, "dataset", config.Dataset)
 
-	lockPath := filepath.Join(config.ExportDir, "locks.yaml")
+	runDir := filepath.Join(config.ExportDir, "run", config.Pool, config.Dataset)
+	if err := os.MkdirAll(runDir, 0755); err != nil {
+		logger.Error("Failed to create run directory", "error", err)
+		log.Fatalf("Failed to create run directory: %v", err)
+	}
+	lockPath := filepath.Join(runDir, "zrb.lock")
 	releaseLock, err := AcquireLock(lockPath, config.Pool, config.Dataset)
 	if err != nil {
 		logger.Error("Failed to acquire lock", "error", err)
@@ -156,7 +164,8 @@ func runBackup(ctx context.Context, configPath string, backupType string) error 
 	latestSnapshot := snapshots[len(snapshots)-1]
 	logger.Info("Latest snapshot found", "snapshot", latestSnapshot)
 
-	outputDir := filepath.Join(config.ExportDir, config.Pool, config.Dataset, backupType)
+	taskDirName := fmt.Sprintf("%s_%s", backupType, time.Now().Format("20060102"))
+	outputDir := filepath.Join(config.ExportDir, "task", config.Pool, config.Dataset, taskDirName)
 	// Clean up output directory if it exists
 	if _, err := os.Stat(outputDir); err == nil {
 		logger.Info("Cleaning up existing output directory", "path", outputDir)
@@ -174,7 +183,7 @@ func runBackup(ctx context.Context, configPath string, backupType string) error 
 	targetSnapshot := latestSnapshot // TODO: refactor
 
 	// determine base snapshot for incremental sends when needed
-	lastPath := filepath.Join(config.ExportDir, config.Pool, config.Dataset, "last_backup.yaml")
+	lastPath := filepath.Join(config.ExportDir, "run", config.Pool, config.Dataset, "last_backup_manifest.yaml")
 	var parentSnapshot string = ""
 	if backupType == "diff" {
 		last, err := readLastBackupManifest(lastPath)
@@ -259,7 +268,7 @@ func runBackup(ctx context.Context, configPath string, backupType string) error 
 
 		// Upload to remote backend if configured
 		if backend != nil {
-			remotePath := filepath.Join(config.Pool, config.Dataset, latestSnapshot, filepath.Base(encryptedFile))
+			remotePath := filepath.Join("data", config.Pool, config.Dataset, taskDirName, filepath.Base(encryptedFile))
 			if err := backend.Upload(ctxBg, encryptedFile, remotePath, sha256Hash); err != nil {
 				logger.Error("Failed to upload part file", "encryptedFile", encryptedFile, "error", err)
 				log.Fatalf("Failed to upload %s: %v", encryptedFile, err)
@@ -290,7 +299,8 @@ func runBackup(ctx context.Context, configPath string, backupType string) error 
 		Parts:          partInfos,
 	}
 
-	manifestPath := filepath.Join(outputDir, "backup_manifest.yaml")
+	// task manifest name
+	manifestPath := filepath.Join(outputDir, "task_manifest.yaml")
 	if err := writeManifest(manifestPath, &manifest); err != nil {
 		logger.Error("Failed to write manifest", "error", err)
 		log.Fatalf("Failed to write manifest: %v", err)
@@ -304,15 +314,14 @@ func runBackup(ctx context.Context, configPath string, backupType string) error 
 			logger.Error("Failed to calculate manifest SHA256", "error", err)
 			log.Fatalf("Failed to calculate manifest SHA256: %v", err)
 		}
-		remotePath := filepath.Join(config.Pool, config.Dataset, latestSnapshot, "backup_manifest.yaml")
+		remotePath := filepath.Join("manifests", config.Pool, config.Dataset, taskDirName, "task_manifest.yaml")
 		if err := backend.Upload(ctxBg, manifestPath, remotePath, manifestSHA256); err != nil {
 			logger.Error("Failed to upload manifest", "error", err)
 			log.Fatalf("Failed to upload manifest: %v", err)
 		}
 	}
 
-	// update last_backup.yaml preserving other fields if present
-	lastPath = filepath.Join(config.ExportDir, config.Pool, config.Dataset, "last_backup.yaml")
+	lastPath = filepath.Join(config.ExportDir, "run", config.Pool, config.Dataset, "last_backup_manifest.yaml")
 	var last LastBackup
 	if existing, err := readLastBackupManifest(lastPath); err == nil && existing != nil {
 		last = *existing
@@ -338,6 +347,19 @@ func runBackup(ctx context.Context, configPath string, backupType string) error 
 		logger.Warn("Failed to write last backup manifest", "error", err)
 	} else {
 		logger.Info("Last backup manifest written", "path", lastPath)
+	}
+
+	if backend != nil {
+		if lastSHA, err := calculateSHA256(lastPath); err == nil {
+			remoteLastPath := filepath.Join("manifests", config.Pool, config.Dataset, "last_backup_manifest.yaml")
+			if err := backend.Upload(ctxBg, lastPath, remoteLastPath, lastSHA); err != nil {
+				logger.Warn("Failed to upload last backup manifest", "error", err)
+			} else {
+				logger.Info("Uploaded last backup manifest to remote", "remote", remoteLastPath)
+			}
+		} else {
+			logger.Warn("Failed to calculate SHA256 for last backup manifest", "error", err)
+		}
 	}
 
 	// Clean up local files if S3 is used
