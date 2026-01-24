@@ -37,15 +37,21 @@ func main() {
 						Value: "zrb_simple_config.yaml",
 					},
 					&cli.StringFlag{
-						Name:  "type",
-						Usage: "Type of backup to perform (full, diff, incr).",
-						Value: "full",
+						Name:     "type",
+						Usage:    "Type of backup to perform (full, diff, incr).",
+						Required: true,
+					},
+					&cli.StringFlag{
+						Name:     "task",
+						Usage:    "Name of the backup task to run.",
+						Required: true,
 					},
 				},
 				Action: func(ctx context.Context, cmd *cli.Command) error {
 					configPath := cmd.String("config")
 					backupType := cmd.String("type")
-					return runBackup(ctx, configPath, backupType)
+					taskName := cmd.String("task")
+					return runBackup(ctx, configPath, backupType, taskName)
 				},
 			},
 			{
@@ -103,7 +109,7 @@ func generateKey(ctx context.Context) error {
 	return nil
 }
 
-func runBackup(ctx context.Context, configPath string, backupType string) error {
+func runBackup(ctx context.Context, configPath string, backupType string, taskName string) error {
 	if backupType != "full" && backupType != "diff" && backupType != "incr" {
 		return fmt.Errorf("invalid backup type: %s", backupType)
 	}
@@ -115,11 +121,26 @@ func runBackup(ctx context.Context, configPath string, backupType string) error 
 		log.Fatalf("Failed to load config: %v", err)
 	}
 
-	if err := os.MkdirAll(config.ExportDir, 0755); err != nil {
+	// find the specified task
+	var task *BackupTask = nil
+	for _, t := range config.Tasks {
+		if t.Name == taskName {
+			task = &t
+			break
+		}
+	}
+	if task == nil {
+		log.Fatalf("Backup task not found: %s", taskName)
+	}
+	if !task.Enabled {
+		log.Fatalf("Backup task is disabled: %s", taskName)
+	}
+
+	if err := os.MkdirAll(config.BaseDir, 0755); err != nil {
 		log.Fatalf("Failed to create export directory: %v", err)
 	}
 
-	logDir := filepath.Join(config.ExportDir, "logs", config.Pool, config.Dataset)
+	logDir := filepath.Join(config.BaseDir, "logs", task.Pool, task.Dataset)
 	if err := os.MkdirAll(logDir, 0755); err != nil {
 		log.Fatalf("Failed to create log directory: %v", err)
 	}
@@ -131,15 +152,15 @@ func runBackup(ctx context.Context, configPath string, backupType string) error 
 	defer file.Close()
 	logger := slog.New(slog.NewJSONHandler(file, nil))
 	slog.SetDefault(logger)
-	logger.Info("Backup started", "type", backupType, "pool", config.Pool, "dataset", config.Dataset)
+	logger.Info("Backup started", "type", backupType, "pool", task.Pool, "dataset", task.Dataset)
 
-	runDir := filepath.Join(config.ExportDir, "run", config.Pool, config.Dataset)
+	runDir := filepath.Join(config.BaseDir, "run", task.Pool, task.Dataset)
 	if err := os.MkdirAll(runDir, 0755); err != nil {
 		logger.Error("Failed to create run directory", "error", err)
 		log.Fatalf("Failed to create run directory: %v", err)
 	}
 	lockPath := filepath.Join(runDir, "zrb.lock")
-	releaseLock, err := AcquireLock(lockPath, config.Pool, config.Dataset)
+	releaseLock, err := AcquireLock(lockPath, task.Pool, task.Dataset)
 	if err != nil {
 		logger.Error("Failed to acquire lock", "error", err)
 		log.Fatalf("Failed to acquire lock: %v", err)
@@ -151,21 +172,21 @@ func runBackup(ctx context.Context, configPath string, backupType string) error 
 		}
 	}()
 
-	snapshots, err := listSnapshots(config.Pool, config.Dataset, "zrb_"+backupType)
+	snapshots, err := listSnapshots(task.Pool, task.Dataset, "zrb_"+backupType)
 	if err != nil {
 		logger.Error("Failed to list snapshots", "error", err)
 		log.Fatalf("Failed to list snapshots: %v", err)
 	}
 	if len(snapshots) == 0 {
-		logger.Error("No snapshots found", "pool", config.Pool, "dataset", config.Dataset)
-		log.Fatalf("No snapshots found for %s/%s", config.Pool, config.Dataset)
+		logger.Error("No snapshots found", "pool", task.Pool, "dataset", task.Dataset)
+		log.Fatalf("No snapshots found for %s/%s", task.Pool, task.Dataset)
 	}
 
 	latestSnapshot := snapshots[len(snapshots)-1]
 	logger.Info("Latest snapshot found", "snapshot", latestSnapshot)
 
 	taskDirName := fmt.Sprintf("%s_%s", backupType, time.Now().Format("20060102"))
-	outputDir := filepath.Join(config.ExportDir, "task", config.Pool, config.Dataset, taskDirName)
+	outputDir := filepath.Join(config.BaseDir, "task", task.Pool, task.Dataset, taskDirName)
 	// Clean up output directory if it exists
 	if _, err := os.Stat(outputDir); err == nil {
 		logger.Info("Cleaning up existing output directory", "path", outputDir)
@@ -183,7 +204,7 @@ func runBackup(ctx context.Context, configPath string, backupType string) error 
 	targetSnapshot := latestSnapshot // TODO: refactor
 
 	// determine base snapshot for incremental sends when needed
-	lastPath := filepath.Join(config.ExportDir, "run", config.Pool, config.Dataset, "last_backup_manifest.yaml")
+	lastPath := filepath.Join(config.BaseDir, "run", task.Pool, task.Dataset, "last_backup_manifest.yaml")
 	var parentSnapshot string = ""
 	if backupType == "diff" {
 		last, err := readLastBackupManifest(lastPath)
@@ -240,15 +261,32 @@ func runBackup(ctx context.Context, configPath string, backupType string) error 
 
 	// Initialize S3 backend if enabled
 	var backend RemoteBackend = nil
+	var manifestBackend RemoteBackend = nil
 	ctxBg := context.Background()
 	if config.S3.Enabled {
-		s3Backend, err := NewS3Backend(ctxBg, config.S3.Bucket, config.S3.Region, config.S3.Prefix, config.S3.Endpoint, config.S3.StorageClass)
+		var storageClass string
+		switch backupType {
+		case "full":
+			storageClass = config.S3.StorageClass.FullBackup
+		case "diff":
+			storageClass = config.S3.StorageClass.DiffBackup
+		case "incr":
+			storageClass = config.S3.StorageClass.IncrBackup
+		}
+		s3Backend, err := NewS3Backend(ctxBg, config.S3.Bucket, config.S3.Region, config.S3.Prefix, config.S3.Endpoint, storageClass)
 		if err != nil {
 			logger.Error("Failed to initialize S3 backend", "error", err)
 			log.Fatalf("Failed to initialize S3 backend: %v", err)
 		}
 		backend = s3Backend
 		logger.Info("S3 backend initialized", "bucket", config.S3.Bucket, "region", config.S3.Region, "prefix", config.S3.Prefix)
+
+		manifestBackend, err = NewS3Backend(ctxBg, config.S3.Bucket, config.S3.Region, config.S3.Prefix, config.S3.Endpoint, config.S3.StorageClass.Manifest)
+		if err != nil {
+			logger.Error("Failed to initialize S3 backend for manifests", "error", err)
+			log.Fatalf("Failed to initialize S3 backend for manifests: %v", err)
+		}
+		logger.Info("S3 backend for manifests initialized", "bucket", config.S3.Bucket, "region", config.S3.Region, "prefix", config.S3.Prefix)
 	}
 
 	var partInfos []PartInfo
@@ -268,7 +306,7 @@ func runBackup(ctx context.Context, configPath string, backupType string) error 
 
 		// Upload to remote backend if configured
 		if backend != nil {
-			remotePath := filepath.Join("data", config.Pool, config.Dataset, taskDirName, filepath.Base(encryptedFile))
+			remotePath := filepath.Join("data", task.Pool, task.Dataset, taskDirName, filepath.Base(encryptedFile))
 			if err := backend.Upload(ctxBg, encryptedFile, remotePath, sha256Hash); err != nil {
 				logger.Error("Failed to upload part file", "encryptedFile", encryptedFile, "error", err)
 				log.Fatalf("Failed to upload %s: %v", encryptedFile, err)
@@ -289,8 +327,8 @@ func runBackup(ctx context.Context, configPath string, backupType string) error 
 	manifest := BackupManifest{
 		Datetime:       time.Now().Unix(),
 		System:         systemInfo,
-		Pool:           config.Pool,
-		Dataset:        config.Dataset,
+		Pool:           task.Pool,
+		Dataset:        task.Dataset,
 		BackupType:     backupType,
 		TargetSnapshot: targetSnapshot,
 		ParentSnapshot: parentSnapshot,
@@ -308,26 +346,26 @@ func runBackup(ctx context.Context, configPath string, backupType string) error 
 	logger.Info("Manifest written", "path", manifestPath)
 
 	// Upload manifest to S3
-	if backend != nil {
+	if manifestBackend != nil {
 		manifestSHA256, err := calculateSHA256(manifestPath)
 		if err != nil {
 			logger.Error("Failed to calculate manifest SHA256", "error", err)
 			log.Fatalf("Failed to calculate manifest SHA256: %v", err)
 		}
-		remotePath := filepath.Join("manifests", config.Pool, config.Dataset, taskDirName, "task_manifest.yaml")
-		if err := backend.Upload(ctxBg, manifestPath, remotePath, manifestSHA256); err != nil {
+		remotePath := filepath.Join("manifests", task.Pool, task.Dataset, taskDirName, "task_manifest.yaml")
+		if err := manifestBackend.Upload(ctxBg, manifestPath, remotePath, manifestSHA256); err != nil {
 			logger.Error("Failed to upload manifest", "error", err)
 			log.Fatalf("Failed to upload manifest: %v", err)
 		}
 	}
 
-	lastPath = filepath.Join(config.ExportDir, "run", config.Pool, config.Dataset, "last_backup_manifest.yaml")
+	lastPath = filepath.Join(config.BaseDir, "run", task.Pool, task.Dataset, "last_backup_manifest.yaml")
 	var last LastBackup
 	if existing, err := readLastBackupManifest(lastPath); err == nil && existing != nil {
 		last = *existing
 	}
-	last.Pool = config.Pool
-	last.Dataset = config.Dataset
+	last.Pool = task.Pool
+	last.Dataset = task.Dataset
 	ref := &BackupRef{
 		Datetime:   time.Now().Unix(),
 		Snapshot:   latestSnapshot,
@@ -349,10 +387,10 @@ func runBackup(ctx context.Context, configPath string, backupType string) error 
 		logger.Info("Last backup manifest written", "path", lastPath)
 	}
 
-	if backend != nil {
+	if manifestBackend != nil {
 		if lastSHA, err := calculateSHA256(lastPath); err == nil {
-			remoteLastPath := filepath.Join("manifests", config.Pool, config.Dataset, "last_backup_manifest.yaml")
-			if err := backend.Upload(ctxBg, lastPath, remoteLastPath, lastSHA); err != nil {
+			remoteLastPath := filepath.Join("manifests", task.Pool, task.Dataset, "last_backup_manifest.yaml")
+			if err := manifestBackend.Upload(ctxBg, lastPath, remoteLastPath, lastSHA); err != nil {
 				logger.Warn("Failed to upload last backup manifest", "error", err)
 			} else {
 				logger.Info("Uploaded last backup manifest to remote", "remote", remoteLastPath)
@@ -371,7 +409,6 @@ func runBackup(ctx context.Context, configPath string, backupType string) error 
 		}
 	}
 
-	logger.Info("All parts processed successfully")
 	logger.Info("Backup completed successfully!")
 	return nil
 }

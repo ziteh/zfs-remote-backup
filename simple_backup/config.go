@@ -6,21 +6,35 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+type BackupTask struct {
+	Name        string `yaml:"name"`
+	Description string `yaml:"description,omitempty"`
+	Pool        string `yaml:"pool"`
+	Dataset     string `yaml:"dataset"`
+	Enabled     bool   `yaml:"enabled"`
+}
+
 type Config struct {
-	Pool         string   `yaml:"pool"`
-	Dataset      string   `yaml:"dataset"`
-	AgePublicKey string   `yaml:"age_public_key"`
-	ExportDir    string   `yaml:"export_dir"`
-	S3           S3Config `yaml:"s3"`
+	BaseDir      string       `yaml:"base_dir"`
+	AgePublicKey string       `yaml:"age_public_key"`
+	S3           S3Config     `yaml:"s3"`
+	Tasks        []BackupTask `yaml:"tasks"`
+}
+
+type StorageClass struct {
+	FullBackup string `yaml:"full_backup"`
+	DiffBackup string `yaml:"diff_backup"`
+	IncrBackup string `yaml:"incr_backup"`
+	Manifest   string `yaml:"manifest"`
 }
 
 type S3Config struct {
-	Enabled      bool   `yaml:"enabled"`
-	Bucket       string `yaml:"bucket"`
-	Region       string `yaml:"region"`
-	Prefix       string `yaml:"prefix"`
-	Endpoint     string `yaml:"endpoint"`      // For S3 compatible services
-	StorageClass string `yaml:"storage_class"` // S3 storage class (STANDARD, GLACIER, DEEP_ARCHIVE, etc.)
+	Enabled      bool         `yaml:"enabled"`
+	Bucket       string       `yaml:"bucket"`
+	Prefix       string       `yaml:"prefix"`
+	Region       string       `yaml:"region"`
+	Endpoint     string       `yaml:"endpoint"` // For S3 compatible services
+	StorageClass StorageClass `yaml:"storage_class"`
 }
 
 type PartInfo struct {

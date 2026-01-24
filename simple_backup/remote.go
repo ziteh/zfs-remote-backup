@@ -56,7 +56,7 @@ func NewS3Backend(ctx context.Context, bucket, region, prefix, endpoint, storage
 		sc = types.StorageClass(storageClass)
 		log.Printf("Using storage class: %s", storageClass)
 	} else {
-		sc = types.StorageClassStandard
+		return nil, fmt.Errorf("storage class must be specified")
 	}
 
 	return &S3Backend{
