@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"log/slog"
+
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -31,6 +33,7 @@ func runZfsSendAndSplit(snapshotPath, baseSnapshot, exportDir string) (string, e
 			matches, _ := filepath.Glob(outputPattern + "*")
 			for _, f := range matches {
 				if err := os.Remove(f); err != nil {
+					slog.Warn("Failed to clean up", "file", f, "error", err)
 					log.Printf("Warning: failed to clean up %s: %v", f, err)
 				}
 			}
@@ -41,8 +44,10 @@ func runZfsSendAndSplit(snapshotPath, baseSnapshot, exportDir string) (string, e
 	args := []string{"send", "-L", "-c"}
 	if baseSnapshot != "" {
 		args = append(args, "-i", baseSnapshot)
+		slog.Info("Running incremental send", "baseSnapshot", baseSnapshot, "snapshot", snapshotPath)
 		log.Printf("Running incremental send: %s %s", baseSnapshot, snapshotPath)
 	} else {
+		slog.Info("Running full send", "snapshot", snapshotPath)
 		log.Printf("Running full send: %s", snapshotPath)
 	}
 	args = append(args, snapshotPath)
@@ -58,6 +63,7 @@ func runZfsSendAndSplit(snapshotPath, baseSnapshot, exportDir string) (string, e
 	holdCtx, cancelHold := context.WithTimeout(ctx, 10*time.Second)
 	if err := exec.CommandContext(holdCtx, "zfs", "hold", holdTag, snapshotPath).Run(); err != nil {
 		cancelHold()
+		slog.Error("Failed to hold snapshot", "snapshot", snapshotPath, "error", err)
 		return "", fmt.Errorf("failed to hold snapshot: %w", err)
 	}
 	cancelHold()
@@ -65,6 +71,7 @@ func runZfsSendAndSplit(snapshotPath, baseSnapshot, exportDir string) (string, e
 		releaseCtx, cancelRelease := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancelRelease()
 		if err := exec.CommandContext(releaseCtx, "zfs", "release", holdTag, snapshotPath).Run(); err != nil {
+			slog.Warn("Failed to release snapshot hold", "holdTag", holdTag, "error", err)
 			log.Printf("Warning: failed to release snapshot hold %s: %v", holdTag, err)
 		}
 	}()
@@ -72,6 +79,7 @@ func runZfsSendAndSplit(snapshotPath, baseSnapshot, exportDir string) (string, e
 	// Pipeline: ZFS stdout -> TeeReader(hasher) -> Split stdin
 	zfsStdout, err := zfsCmd.StdoutPipe()
 	if err != nil {
+		slog.Error("Failed to get zfs stdout", "error", err)
 		return "", fmt.Errorf("failed to get zfs stdout: %w", err)
 	}
 
@@ -80,12 +88,14 @@ func runZfsSendAndSplit(snapshotPath, baseSnapshot, exportDir string) (string, e
 
 	// Start the commands
 	if err := splitCmd.Start(); err != nil {
+		slog.Error("Failed to start split command", "error", err)
 		return "", fmt.Errorf("failed to start split: %w", err)
 	}
 
 	if err := zfsCmd.Start(); err != nil {
 		_ = splitCmd.Process.Kill()
 		_ = splitCmd.Wait() // Clean up zombie process
+		slog.Error("Failed to start zfs command", "error", err)
 		return "", fmt.Errorf("failed to start zfs: %w", err)
 	}
 
@@ -99,6 +109,7 @@ func runZfsSendAndSplit(snapshotPath, baseSnapshot, exportDir string) (string, e
 		if err := zfsCmd.Wait(); err != nil {
 			// Check if the error is due to context cancellation
 			if ctx.Err() == nil {
+				slog.Error("ZFS send failed", "error", err)
 				errChan <- fmt.Errorf("zfs send failed: %w", err)
 			}
 			cancel() // Ensure the other process also terminates
@@ -111,6 +122,7 @@ func runZfsSendAndSplit(snapshotPath, baseSnapshot, exportDir string) (string, e
 		if err := splitCmd.Wait(); err != nil {
 			// Check if the error is due to context cancellation
 			if ctx.Err() == nil {
+				slog.Error("Split failed", "error", err)
 				errChan <- fmt.Errorf("split failed: %w", err)
 			}
 			cancel()
@@ -127,12 +139,14 @@ func runZfsSendAndSplit(snapshotPath, baseSnapshot, exportDir string) (string, e
 	}
 
 	if len(errs) > 0 {
+		slog.Error("Pipeline failed", "errors", errs)
 		return "", fmt.Errorf("pipeline failed: %v", errs)
 	}
 
 	// All operations successful
 	success = true
 	blake3Hash := fmt.Sprintf("%x", hasher.Sum(nil))
+	slog.Info("ZFS send and split completed successfully", "outputPattern", outputPattern, "blake3", blake3Hash)
 	log.Printf("ZFS send and split completed successfully")
 	log.Printf("Output: %s*", outputPattern)
 	log.Printf("BLAKE3: %s", blake3Hash)

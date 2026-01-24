@@ -127,6 +127,7 @@ func runBackup(ctx context.Context, configPath string, backupType string) error 
 	}
 	defer file.Close()
 	logger := slog.New(slog.NewJSONHandler(file, nil))
+	slog.SetDefault(logger)
 	logger.Info("Backup started", "type", backupType, "pool", config.Pool, "dataset", config.Dataset)
 
 	lockPath := filepath.Join(config.ExportDir, "locks.yaml")
