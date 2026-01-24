@@ -19,7 +19,7 @@ import (
 )
 
 // runZfsSendAndSplit executes zfs send and splits the output into parts while computing BLAKE3 hash
-func runZfsSendAndSplit(snapshotPath, baseSnapshot, exportDir string) (string, error) {
+func runZfsSendAndSplit(targetSnapshot, parentSnapshot, exportDir string) (string, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -42,15 +42,15 @@ func runZfsSendAndSplit(snapshotPath, baseSnapshot, exportDir string) (string, e
 
 	// Prepare zfs send command
 	args := []string{"send", "-L", "-c"}
-	if baseSnapshot != "" {
-		args = append(args, "-i", baseSnapshot)
-		slog.Info("Running incremental send", "baseSnapshot", baseSnapshot, "snapshot", snapshotPath)
-		log.Printf("Running incremental send: %s %s", baseSnapshot, snapshotPath)
+	if parentSnapshot != "" {
+		args = append(args, "-i", parentSnapshot)
+		slog.Info("Running incremental send", "parentSnapshot", parentSnapshot, "snapshot", targetSnapshot)
+		log.Printf("Running incremental send: %s %s", parentSnapshot, targetSnapshot)
 	} else {
-		slog.Info("Running full send", "snapshot", snapshotPath)
-		log.Printf("Running full send: %s", snapshotPath)
+		slog.Info("Running full send", "snapshot", targetSnapshot)
+		log.Printf("Running full send: %s", targetSnapshot)
 	}
-	args = append(args, snapshotPath)
+	args = append(args, targetSnapshot)
 	zfsCmd := exec.CommandContext(ctx, "zfs", args...)
 	zfsCmd.Stderr = os.Stderr
 
@@ -61,16 +61,16 @@ func runZfsSendAndSplit(snapshotPath, baseSnapshot, exportDir string) (string, e
 	// Hold zfs snapshot to prevent deletion during send
 	holdTag := fmt.Sprintf("zrb:%d", time.Now().Unix())
 	holdCtx, cancelHold := context.WithTimeout(ctx, 10*time.Second)
-	if err := exec.CommandContext(holdCtx, "zfs", "hold", holdTag, snapshotPath).Run(); err != nil {
+	if err := exec.CommandContext(holdCtx, "zfs", "hold", holdTag, targetSnapshot).Run(); err != nil {
 		cancelHold()
-		slog.Error("Failed to hold snapshot", "snapshot", snapshotPath, "error", err)
+		slog.Error("Failed to hold snapshot", "snapshot", targetSnapshot, "error", err)
 		return "", fmt.Errorf("failed to hold snapshot: %w", err)
 	}
 	cancelHold()
 	defer func() {
 		releaseCtx, cancelRelease := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancelRelease()
-		if err := exec.CommandContext(releaseCtx, "zfs", "release", holdTag, snapshotPath).Run(); err != nil {
+		if err := exec.CommandContext(releaseCtx, "zfs", "release", holdTag, targetSnapshot).Run(); err != nil {
 			slog.Warn("Failed to release snapshot hold", "holdTag", holdTag, "error", err)
 			log.Printf("Warning: failed to release snapshot hold %s: %v", holdTag, err)
 		}

@@ -171,18 +171,18 @@ func runBackup(ctx context.Context, configPath string, backupType string) error 
 		log.Fatalf("Failed to create export directory: %v", err)
 	}
 
-	snapshotPath := latestSnapshot // TODO: refactor
+	targetSnapshot := latestSnapshot // TODO: refactor
 
 	// determine base snapshot for incremental sends when needed
 	lastPath := filepath.Join(config.ExportDir, config.Pool, config.Dataset, "last_backup.yaml")
-	var baseSnapshot string
+	var parentSnapshot string = ""
 	if backupType == "diff" {
 		last, err := readLastBackupManifest(lastPath)
 		if err != nil || last == nil || last.Full == nil {
 			logger.Error("Failed to determine base for diff", "error", err)
 			log.Fatalf("Failed to determine base for diff: no previous full backup recorded")
 		}
-		baseSnapshot = last.Full.Snapshot
+		parentSnapshot = last.Full.Snapshot
 	} else if backupType == "incr" {
 		last, err := readLastBackupManifest(lastPath)
 		if err != nil || last == nil {
@@ -191,18 +191,18 @@ func runBackup(ctx context.Context, configPath string, backupType string) error 
 		}
 		// prefer most recent: incr > diff > full
 		if last.Incr != nil {
-			baseSnapshot = last.Incr.Snapshot
+			parentSnapshot = last.Incr.Snapshot
 		} else if last.Diff != nil {
-			baseSnapshot = last.Diff.Snapshot
+			parentSnapshot = last.Diff.Snapshot
 		} else if last.Full != nil {
-			baseSnapshot = last.Full.Snapshot
+			parentSnapshot = last.Full.Snapshot
 		} else {
 			logger.Error("Failed to determine base for incr", "error", err)
 			log.Fatalf("Failed to determine base for incr: no prior backups recorded")
 		}
 	}
 
-	blake3Hash, err := runZfsSendAndSplit(snapshotPath, baseSnapshot, outputDir)
+	blake3Hash, err := runZfsSendAndSplit(targetSnapshot, parentSnapshot, outputDir)
 	if err != nil {
 		logger.Error("Failed to run zfs send and split", "error", err)
 		log.Fatalf("Failed to run zfs send and split: %v", err)
@@ -278,14 +278,16 @@ func runBackup(ctx context.Context, configPath string, backupType string) error 
 	}
 
 	manifest := BackupManifest{
-		Datetime:         time.Now().Unix(),
-		System:           systemInfo,
-		Pool:             config.Pool,
-		Dataset:          config.Dataset,
-		BaseSnapshotName: latestSnapshot,
-		AgePublicKey:     config.AgePublicKey,
-		Blake3Hash:       blake3Hash,
-		Parts:            partInfos,
+		Datetime:       time.Now().Unix(),
+		System:         systemInfo,
+		Pool:           config.Pool,
+		Dataset:        config.Dataset,
+		BackupType:     backupType,
+		TargetSnapshot: targetSnapshot,
+		ParentSnapshot: parentSnapshot,
+		AgePublicKey:   config.AgePublicKey,
+		Blake3Hash:     blake3Hash,
+		Parts:          partInfos,
 	}
 
 	manifestPath := filepath.Join(outputDir, "backup_manifest.yaml")

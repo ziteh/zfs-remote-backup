@@ -37,14 +37,16 @@ type SystemInfo struct {
 }
 
 type BackupManifest struct {
-	Datetime         int64      `yaml:"datetime"`
-	System           SystemInfo `yaml:"system"`
-	Pool             string     `yaml:"pool"`
-	Dataset          string     `yaml:"dataset"`
-	BaseSnapshotName string     `yaml:"base_snapshot_name"`
-	AgePublicKey     string     `yaml:"age_public_key"`
-	Blake3Hash       string     `yaml:"blake3_hash"`
-	Parts            []PartInfo `yaml:"parts"`
+	Datetime       int64      `yaml:"datetime"`
+	System         SystemInfo `yaml:"system"`
+	Pool           string     `yaml:"pool"`
+	Dataset        string     `yaml:"dataset"`
+	BackupType     string     `yaml:"backup_type"`
+	TargetSnapshot string     `yaml:"target_snapshot"`
+	ParentSnapshot string     `yaml:"parent_snapshot"`
+	AgePublicKey   string     `yaml:"age_public_key"`
+	Blake3Hash     string     `yaml:"blake3_hash"`
+	Parts          []PartInfo `yaml:"parts"`
 }
 
 type BackupRef struct {
