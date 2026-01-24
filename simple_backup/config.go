@@ -3,8 +3,8 @@ package main
 import (
 	"os"
 
-	"gopkg.in/yaml.v3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
+	"gopkg.in/yaml.v3"
 )
 
 type BackupTask struct {
@@ -30,11 +30,11 @@ type StorageClassSet struct {
 }
 
 type S3Config struct {
-	Enabled      bool         `yaml:"enabled"`
-	Bucket       string       `yaml:"bucket"`
-	Prefix       string       `yaml:"prefix"`
-	Region       string       `yaml:"region"`
-	Endpoint     string       `yaml:"endpoint"` // For S3 compatible services
+	Enabled      bool            `yaml:"enabled"`
+	Bucket       string          `yaml:"bucket"`
+	Prefix       string          `yaml:"prefix"`
+	Region       string          `yaml:"region"`
+	Endpoint     string          `yaml:"endpoint"` // For S3 compatible services
 	StorageClass StorageClassSet `yaml:"storage_class"`
 }
 

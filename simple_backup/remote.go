@@ -9,6 +9,7 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/feature/s3/manager"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
@@ -34,6 +35,14 @@ func NewS3Backend(ctx context.Context, bucket, region, prefix, endpoint string, 
 	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region))
 	if err != nil {
 		return nil, fmt.Errorf("failed to load AWS config: %w", err)
+	}
+
+	if endpoint != "" {
+		if accessKey := os.Getenv("AWS_ACCESS_KEY_ID"); accessKey != "" {
+			if secretKey := os.Getenv("AWS_SECRET_ACCESS_KEY"); secretKey != "" {
+				cfg.Credentials = credentials.NewStaticCredentialsProvider(accessKey, secretKey, "")
+			}
+		}
 	}
 
 	var client *s3.Client

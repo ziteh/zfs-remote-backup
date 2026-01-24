@@ -2,14 +2,14 @@ base_dir: /tmp/zrb_backups/
 age_public_key: age1ed9kad8ddqpjnt7k50tmxu8ngxte5ghmwsse7ckt6kdtvc7afpkqlj5ddk
 s3:
   enabled: true
-  bucket: my-backup-bucket
+  bucket: zfs-backups
   prefix: zfs-backups
   region: us-east-1
-  endpoint: "" # Leave empty for AWS S3, or specify custom endpoint for S3 compatible services
+  endpoint: "http://127.0.0.1:9000" # point to local MinIO
   storage_class: # Options: STANDARD, INTELLIGENT_TIERING, STANDARD_IA, ONEZONE_IA, GLACIER, DEEP_ARCHIVE, GLACIER_IR
-    full_backup: DEEP_ARCHIVE
-    diff_backup: GLACIER
-    incr_backup: STANDARD_IA
+    full_backup: STANDARD
+    diff_backup: STANDARD
+    incr_backup: STANDARD
     manifest: STANDARD
 tasks:
   - name: daily_backup
