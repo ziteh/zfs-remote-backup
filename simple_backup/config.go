@@ -29,6 +29,7 @@ type PartInfo struct {
 }
 
 type SystemInfo struct {
+	Hostname   string `yaml:"hostname"`
 	OS         string `yaml:"os"`
 	ZFSVersion struct {
 		Userland string `yaml:"userland"`

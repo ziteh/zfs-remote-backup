@@ -11,6 +11,11 @@ import (
 
 // getSystemInfo retrieves the OS and ZFS version information
 func getSystemInfo() (SystemInfo, error) {
+	hostname, err := os.Hostname()
+	if err != nil {
+		hostname = "unknown"
+	}
+
 	osVersion := "unknown"
 	if data, err := os.ReadFile("/etc/version"); err == nil {
 		osVersion = strings.TrimSpace(string(data))
@@ -34,6 +39,7 @@ func getSystemInfo() (SystemInfo, error) {
 	}
 
 	var systemInfo SystemInfo
+	systemInfo.Hostname = hostname
 	systemInfo.OS = osVersion
 	systemInfo.ZFSVersion.Userland = result.ZFSVersion.Userland
 	systemInfo.ZFSVersion.Kernel = result.ZFSVersion.Kernel
