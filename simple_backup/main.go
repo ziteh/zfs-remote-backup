@@ -157,6 +157,15 @@ func runBackup(ctx context.Context, configPath string, backupType string) error 
 	logger.Info("Latest snapshot found", "snapshot", latestSnapshot)
 
 	outputDir := filepath.Join(config.ExportDir, config.Pool, config.Dataset, latestSnapshot)
+	// Clean up output directory if it exists
+	if _, err := os.Stat(outputDir); err == nil {
+		logger.Info("Cleaning up existing output directory", "path", outputDir)
+		if err := os.RemoveAll(outputDir); err != nil {
+			logger.Error("Failed to remove existing output directory", "error", err)
+			log.Fatalf("Failed to remove existing output directory: %v", err)
+		}
+	}
+
 	if err := os.MkdirAll(outputDir, 0755); err != nil {
 		logger.Error("Failed to create export directory", "error", err)
 		log.Fatalf("Failed to create export directory: %v", err)
@@ -221,7 +230,7 @@ func runBackup(ctx context.Context, configPath string, backupType string) error 
 	}
 
 	// Initialize S3 backend if enabled
-	var backend RemoteBackend
+	var backend RemoteBackend = nil
 	ctxBg := context.Background()
 	if config.S3.Enabled {
 		s3Backend, err := NewS3Backend(ctxBg, config.S3.Bucket, config.S3.Region, config.S3.Prefix, config.S3.Endpoint, config.S3.StorageClass)
@@ -327,6 +336,15 @@ func runBackup(ctx context.Context, configPath string, backupType string) error 
 		logger.Warn("Failed to write last backup manifest", "error", err)
 	} else {
 		logger.Info("Last backup manifest written", "path", lastPath)
+	}
+
+	// Clean up local files if S3 is used
+	if backend != nil {
+		logger.Info("Cleaning up local backup files", "path", outputDir)
+		if err := os.RemoveAll(outputDir); err != nil {
+			logger.Warn("Failed to clean up local files", "error", err)
+			log.Printf("Warning: Failed to clean up local files: %v", err)
+		}
 	}
 
 	logger.Info("All parts processed successfully")
