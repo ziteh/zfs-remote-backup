@@ -156,7 +156,7 @@ func runBackup(ctx context.Context, configPath string, backupType string) error 
 	latestSnapshot := snapshots[len(snapshots)-1]
 	logger.Info("Latest snapshot found", "snapshot", latestSnapshot)
 
-	outputDir := filepath.Join(config.ExportDir, config.Pool, config.Dataset, latestSnapshot)
+	outputDir := filepath.Join(config.ExportDir, config.Pool, config.Dataset, backupType)
 	// Clean up output directory if it exists
 	if _, err := os.Stat(outputDir); err == nil {
 		logger.Info("Cleaning up existing output directory", "path", outputDir)
