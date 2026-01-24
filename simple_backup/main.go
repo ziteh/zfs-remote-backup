@@ -90,7 +90,7 @@ func main() {
 	}
 }
 
-func generateKey(ctx context.Context) error {
+func generateKey(_ context.Context) error {
 	fmt.Println("Generating age public and private key pair...")
 
 	identity, err := age.GenerateX25519Identity()
@@ -110,7 +110,7 @@ func generateKey(ctx context.Context) error {
 	return nil
 }
 
-func runBackup(ctx context.Context, configPath string, backupType string, taskName string) error {
+func runBackup(_ context.Context, configPath string, backupType string, taskName string) error {
 	if backupType != "full" && backupType != "diff" && backupType != "incr" {
 		return fmt.Errorf("invalid backup type: %s", backupType)
 	}
@@ -207,14 +207,15 @@ func runBackup(ctx context.Context, configPath string, backupType string, taskNa
 	// determine base snapshot for incremental sends when needed
 	lastPath := filepath.Join(config.BaseDir, "run", task.Pool, task.Dataset, "last_backup_manifest.yaml")
 	var parentSnapshot string = ""
-	if backupType == "diff" {
+	switch backupType {
+	case "diff":
 		last, err := readLastBackupManifest(lastPath)
 		if err != nil || last == nil || last.Full == nil {
 			logger.Error("Failed to determine base for diff", "error", err)
 			log.Fatalf("Failed to determine base for diff: no previous full backup recorded")
 		}
 		parentSnapshot = last.Full.Snapshot
-	} else if backupType == "incr" {
+	case "incr":
 		last, err := readLastBackupManifest(lastPath)
 		if err != nil || last == nil {
 			logger.Error("Failed to determine base for incr", "error", err)
