@@ -17,8 +17,9 @@ import (
 
 func main() {
 	cmd := &cli.Command{
-		Name:  "zrb_simple",
-		Usage: "ZFS Remote Backup",
+		Name:    "zrb_simple",
+		Usage:   "ZFS Remote Backup",
+		Version: "0.1.0-alpha.1",
 		Commands: []*cli.Command{
 			{
 				Name:  "genkey",
