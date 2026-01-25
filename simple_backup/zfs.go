@@ -182,6 +182,7 @@ func listSnapshots(pool, dataset, prefix string) ([]string, error) {
 
 	// Lexicographical order == chronological order
 	sort.SliceStable(snapshots, func(i, j int) bool {
+		// Newest first
 		return snapshots[i] > snapshots[j]
 	})
 

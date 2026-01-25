@@ -189,9 +189,9 @@ func runBackup(_ context.Context, configPath string, backupType string, taskName
 		slog.Error("No snapshots found", "pool", task.Pool, "dataset", task.Dataset)
 		os.Exit(1)
 	}
-	latestSnapshot := snapshots[len(snapshots)-1]
+	latestSnapshot := snapshots[0]
 	targetSnapshot := latestSnapshot // TODO: refactor
-	slog.Info("Latest snapshot found", "snapshot", latestSnapshot)
+	slog.Info("Latest snapshot found", "latestSnapshot", latestSnapshot, "count", len(snapshots))
 
 	// Prepare output directory
 	taskDirName := fmt.Sprintf("%s_%s", backupType, time.Now().Format("20060102"))
