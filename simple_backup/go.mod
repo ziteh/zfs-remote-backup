@@ -6,15 +6,16 @@ require (
 	filippo.io/age v1.1.1
 	github.com/aws/aws-sdk-go-v2 v1.40.0
 	github.com/aws/aws-sdk-go-v2/config v1.32.0
+	github.com/aws/aws-sdk-go-v2/credentials v1.19.0
 	github.com/aws/aws-sdk-go-v2/feature/s3/manager v1.20.9
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.91.1
+	github.com/urfave/cli/v3 v3.6.2
 	github.com/zeebo/blake3 v0.2.3
 	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
 	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.3 // indirect
-	github.com/aws/aws-sdk-go-v2/credentials v1.19.0 // indirect
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.18.14 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/configsources v1.4.14 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.7.14 // indirect
@@ -30,7 +31,6 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/sts v1.41.1 // indirect
 	github.com/aws/smithy-go v1.23.2 // indirect
 	github.com/klauspost/cpuid/v2 v2.0.12 // indirect
-	github.com/urfave/cli/v3 v3.6.2 // indirect
 	golang.org/x/crypto v0.4.0 // indirect
 	golang.org/x/sys v0.3.0 // indirect
 )
