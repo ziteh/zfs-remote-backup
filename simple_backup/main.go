@@ -148,14 +148,11 @@ func runBackup(_ context.Context, configPath string, backupType string, taskName
 		log.Fatalf("Failed to create log directory: %v", err)
 	}
 	logPath := filepath.Join(logDir, fmt.Sprintf("%s.log", time.Now().Format("2006-01-02")))
-	file, err := os.OpenFile(logPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
-	if err != nil {
-		log.Fatalf("Failed to open log file: %v", err)
-	}
-	defer file.Close()
-	logger := slog.New(slog.NewJSONHandler(file, nil))
+
+	logger, logFile := NewLogger(logPath)
+	defer logFile.Close()
 	slog.SetDefault(logger)
-	logger.Info("Backup started", "type", backupType, "pool", task.Pool, "dataset", task.Dataset)
+	slog.Info("Backup started", "type", backupType, "pool", task.Pool, "dataset", task.Dataset)
 
 	// Prepare run directory
 	runDir := filepath.Join(config.BaseDir, "run", task.Pool, task.Dataset)
