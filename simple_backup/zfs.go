@@ -39,7 +39,7 @@ func runZfsSendAndSplit(targetSnapshot, parentSnapshot, exportDir string) (strin
 	}()
 
 	// Prepare zfs send command
-	args := []string{"send", "-L", "-c"}
+	args := []string{"send", "-L"} // TODO: -c for compression
 	if parentSnapshot != "" {
 		args = append(args, "-i", parentSnapshot)
 		slog.Info("Running incremental send", "parentSnapshot", parentSnapshot, "snapshot", targetSnapshot)

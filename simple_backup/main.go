@@ -128,6 +128,7 @@ func runBackup(_ context.Context, configPath string, backupLevel int16, taskName
 	// find the specified task
 	var task *BackupTask = nil
 	for _, t := range config.Tasks {
+		slog.Info("Checking task", "taskName", t.Name)
 		if t.Name == taskName {
 			task = &t
 			break
@@ -483,6 +484,16 @@ func runBackup(_ context.Context, configPath string, backupLevel int16, taskName
 		Snapshot:   latestSnapshot,
 		Manifest:   manifestPath,
 		Blake3Hash: blake3Hash,
+	}
+	// Ensure BackupLevels slice is initialized and large enough
+	if last.BackupLevels == nil {
+		last.BackupLevels = make([]*BackupRef, int(backupLevel)+1)
+	} else if len(last.BackupLevels) <= int(backupLevel) {
+		// extend slice to required length
+		needed := int(backupLevel) + 1 - len(last.BackupLevels)
+		for i := 0; i < needed; i++ {
+			last.BackupLevels = append(last.BackupLevels, nil)
+		}
 	}
 	last.BackupLevels[backupLevel] = ref
 	if err := writeLastBackupManifest(lastPath, &last); err != nil {
