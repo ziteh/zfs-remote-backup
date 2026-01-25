@@ -17,7 +17,7 @@ import (
 
 // RemoteBackend defines the interface for remote storage
 type RemoteBackend interface {
-	Upload(ctx context.Context, localPath, remotePath string, sha256Hash string) error
+	Upload(ctx context.Context, localPath, remotePath, sha256Hash, backupType string) error
 }
 
 // S3Backend implements RemoteBackend for AWS S3
@@ -64,14 +64,12 @@ func NewS3Backend(ctx context.Context, bucket, region, prefix, endpoint string, 
 		u.RequestChecksumCalculation = aws.RequestChecksumCalculationWhenSupported
 	})
 
-	// Parse storage class
-	var sc types.StorageClass
-	if storageClass != "" {
-		sc = types.StorageClass(storageClass)
-		log.Printf("Using storage class: %s", storageClass)
-	} else {
+	// Validate storage class
+	if storageClass == "" {
 		return nil, fmt.Errorf("storage class must be specified")
 	}
+	sc := storageClass
+	log.Printf("Using storage class: %s", sc)
 
 	return &S3Backend{
 		client:         client,
@@ -84,7 +82,11 @@ func NewS3Backend(ctx context.Context, bucket, region, prefix, endpoint string, 
 }
 
 // Upload uploads a file to S3 with SHA256 checksum for integrity verification
-func (s *S3Backend) Upload(ctx context.Context, localPath, remotePath string, sha256Hash string) error {
+func (s *S3Backend) Upload(ctx context.Context, localPath, remotePath, sha256Hash, backupType string) error {
+	if backupType != "full" && backupType != "diff" && backupType != "incr" && backupType != "manifest" {
+		return fmt.Errorf("invalid backup type: %s", backupType)
+	}
+
 	file, err := os.Open(localPath)
 	if err != nil {
 		return fmt.Errorf("failed to open file: %w", err)
@@ -98,6 +100,7 @@ func (s *S3Backend) Upload(ctx context.Context, localPath, remotePath string, sh
 		Key:          aws.String(key),
 		Body:         file,
 		StorageClass: s.storageClass,
+		Tagging:      aws.String("backup-type=" + backupType),
 	}
 	// TODO: Add to metadata?
 	// Include checksum only if not using custom endpoint

@@ -316,7 +316,7 @@ func runBackup(_ context.Context, configPath string, backupType string, taskName
 		// Upload to remote backend if configured
 		if backend != nil {
 			remotePath := filepath.Join("data", task.Pool, task.Dataset, taskDirName, filepath.Base(encryptedFile))
-			if err := backend.Upload(ctxBg, encryptedFile, remotePath, sha256Hash); err != nil {
+			if err := backend.Upload(ctxBg, encryptedFile, remotePath, sha256Hash, backupType); err != nil {
 				logger.Error("Failed to upload part file", "encryptedFile", encryptedFile, "error", err)
 				log.Fatalf("Failed to upload %s: %v", encryptedFile, err)
 			}
@@ -360,7 +360,7 @@ func runBackup(_ context.Context, configPath string, backupType string, taskName
 			log.Fatalf("Failed to calculate manifest SHA256: %v", err)
 		}
 		remotePath := filepath.Join("manifests", task.Pool, task.Dataset, taskDirName, "task_manifest.yaml")
-		if err := manifestBackend.Upload(ctxBg, manifestPath, remotePath, manifestSHA256); err != nil {
+		if err := manifestBackend.Upload(ctxBg, manifestPath, remotePath, manifestSHA256, "manifest"); err != nil {
 			logger.Error("Failed to upload manifest", "error", err)
 			log.Fatalf("Failed to upload manifest: %v", err)
 		}
@@ -398,7 +398,7 @@ func runBackup(_ context.Context, configPath string, backupType string, taskName
 	if manifestBackend != nil {
 		if lastSHA, err := calculateSHA256(lastPath); err == nil {
 			remoteLastPath := filepath.Join("manifests", task.Pool, task.Dataset, "last_backup_manifest.yaml")
-			if err := manifestBackend.Upload(ctxBg, lastPath, remoteLastPath, lastSHA); err != nil {
+			if err := manifestBackend.Upload(ctxBg, lastPath, remoteLastPath, lastSHA, "manifest"); err != nil {
 				logger.Warn("Failed to upload last backup manifest", "error", err)
 			} else {
 				logger.Info("Uploaded last backup manifest to remote", "remote", remoteLastPath)
