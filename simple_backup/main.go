@@ -213,9 +213,12 @@ func runBackup(_ context.Context, configPath string, backupLevel int16, taskName
 	}
 
 	// Prepare output directory
-	taskDirName := fmt.Sprintf("level%d_%s", backupLevel, time.Now().Format("20060102"))
+	taskDirName := filepath.Join(fmt.Sprintf("level%d", backupLevel), time.Now().Format("20060102"))
 	if state != nil {
-		taskDirName = filepath.Base(state.OutputDir)
+		outputDirParent := filepath.Dir(state.OutputDir)
+		levelDir := filepath.Base(outputDirParent)
+		dateDir := filepath.Base(state.OutputDir)
+		taskDirName = filepath.Join(levelDir, dateDir)
 	}
 	outputDir := filepath.Join(config.BaseDir, "task", task.Pool, task.Dataset, taskDirName)
 	// Clean up output directory if it exists and not resuming

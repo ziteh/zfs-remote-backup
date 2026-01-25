@@ -40,7 +40,15 @@ fi
 
 for d in $LEVELS; do
   echo "Applying $d"
-  REMOTE_DIR="/home/ubuntu/zrb_base/task/testpool/backup_data/$d"
+  # Find the date subdirectory under the level directory
+  DATE_DIRS=$(multipass exec "$VM" -- bash -lc "ls -1 /home/ubuntu/zrb_base/task/testpool/backup_data/$d | sort -V || true")
+  if [ -z "$DATE_DIRS" ]; then
+    echo "No date subdirectories found under $d"
+    continue
+  fi
+  # Use the first (latest) date directory
+  DATE_DIR=$(printf "%s" "$DATE_DIRS" | head -n1)
+  REMOTE_DIR="/home/ubuntu/zrb_base/task/testpool/backup_data/$d/$DATE_DIR"
   multipass exec "$VM" -- bash -lc "cat $REMOTE_DIR/snapshot.part-* | age --decrypt -i $KEY_PATH | sudo -n zfs receive -F testpool/restore_data"
 done
 
