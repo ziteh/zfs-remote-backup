@@ -332,70 +332,81 @@ func runBackup(_ context.Context, configPath string, backupLevel int16, taskName
 		slog.Info("S3 backend for manifests initialized", "bucket", config.S3.Bucket, "region", config.S3.Region, "prefix", config.S3.Prefix)
 	}
 
-	// Encrypt and upload parts concurrently
+	// Encrypt and upload parts concurrently with worker pool
 	var partInfos []PartInfo
+	numWorkers := 4 // TODO: make configurable
 	var wg sync.WaitGroup
 	partInfoChan := make(chan PartInfo, len(rawParts))
 	errChan := make(chan error, len(rawParts))
-	for _, partFile := range rawParts {
-		baseName := filepath.Base(partFile)
-		index := strings.TrimPrefix(baseName, "snapshot.part-")
+	taskChan := make(chan string, len(rawParts))
 
-		// Skip if already processed
-		if state.PartsProcessed[index] {
-			slog.Info("Skipping already processed part", "part", partFile)
-			continue
-		}
-
+	// Start workers
+	for range numWorkers {
 		wg.Add(1)
-		go func(partFile string) {
+		go func() {
 			defer wg.Done()
-			slog.Info("Encryption and upload started for part file", "partFile", partFile)
-			sha256Hash, encryptedFile, err := processPartFile(partFile, recipient)
-			if err != nil {
-				slog.Error("Failed to process part file", "partFile", partFile, "error", err)
-				errChan <- err
-				return
-			}
-			slog.Debug("Part file encrypted", "partFile", partFile, "encryptedFile", encryptedFile, "sha256", sha256Hash)
+			for partFile := range taskChan {
+				baseName := filepath.Base(partFile)
+				index := strings.TrimPrefix(baseName, "snapshot.part-")
 
-			baseName := filepath.Base(partFile)
-			index := strings.TrimPrefix(baseName, "snapshot.part-")
-			partInfo := PartInfo{
-				Index:      index,
-				SHA256Hash: sha256Hash,
-			}
-			partInfoChan <- partInfo
+				// Skip if already processed
+				if state.PartsProcessed[index] {
+					slog.Info("Skipping already processed part", "part", partFile)
+					continue
+				}
 
-			// Mark as processed
-			state.PartsProcessed[index] = true
-			state.LastUpdated = time.Now().Unix()
-			if err := writeBackupState(statePath, state); err != nil {
-				slog.Warn("Failed to save backup state", "error", err)
-			}
+				slog.Info("Encryption and upload started for part file", "partFile", partFile)
+				sha256Hash, encryptedFile, err := processPartFile(partFile, recipient)
+				if err != nil {
+					slog.Error("Failed to process part file", "partFile", partFile, "error", err)
+					errChan <- err
+					continue
+				}
+				slog.Debug("Part file encrypted", "partFile", partFile, "encryptedFile", encryptedFile, "sha256", sha256Hash)
 
-			// Upload to remote backend if configured
-			if backend != nil {
-				// Skip if already uploaded
-				if !state.PartsUploaded[index] {
-					slog.Info("Uploading part file to remote backend", "encryptedFile", encryptedFile)
-					remotePath := filepath.Join("data", task.Pool, task.Dataset, taskDirName, filepath.Base(encryptedFile))
-					if err := backend.Upload(ctxBg, encryptedFile, remotePath, sha256Hash, backupLevel); err != nil {
-						slog.Error("Failed to upload part file", "encryptedFile", encryptedFile, "error", err)
-						errChan <- err
-						return
+				partInfo := PartInfo{
+					Index:      index,
+					SHA256Hash: sha256Hash,
+				}
+				partInfoChan <- partInfo
+
+				// Mark as processed
+				state.PartsProcessed[index] = true
+				state.LastUpdated = time.Now().Unix()
+				if err := writeBackupState(statePath, state); err != nil {
+					slog.Warn("Failed to save backup state", "error", err)
+				}
+
+				// Upload to remote backend if configured
+				if backend != nil {
+					// Skip if already uploaded
+					if !state.PartsUploaded[index] {
+						slog.Info("Uploading part file to remote backend", "encryptedFile", encryptedFile)
+						remotePath := filepath.Join("data", task.Pool, task.Dataset, taskDirName, filepath.Base(encryptedFile))
+						if err := backend.Upload(ctxBg, encryptedFile, remotePath, sha256Hash, backupLevel); err != nil {
+							slog.Error("Failed to upload part file", "encryptedFile", encryptedFile, "error", err)
+							errChan <- err
+							continue
+						}
+						state.PartsUploaded[index] = true
+						state.LastUpdated = time.Now().Unix()
+						if err := writeBackupState(statePath, state); err != nil {
+							slog.Warn("Failed to save backup state", "error", err)
+						}
+					} else {
+						slog.Info("Skipping already uploaded part", "encryptedFile", encryptedFile)
 					}
-					state.PartsUploaded[index] = true
-					state.LastUpdated = time.Now().Unix()
-					if err := writeBackupState(statePath, state); err != nil {
-						slog.Warn("Failed to save backup state", "error", err)
-					}
-				} else {
-					slog.Info("Skipping already uploaded part", "encryptedFile", encryptedFile)
 				}
 			}
-		}(partFile)
+		}()
 	}
+
+	// Send tasks to workers
+	for _, partFile := range rawParts {
+		taskChan <- partFile
+	}
+	close(taskChan)
+
 	wg.Wait()
 	close(partInfoChan)
 	close(errChan)
