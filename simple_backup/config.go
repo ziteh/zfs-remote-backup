@@ -59,6 +59,8 @@ type BackupManifest struct {
 	AgePublicKey   string     `yaml:"age_public_key"`
 	Blake3Hash     string     `yaml:"blake3_hash"`
 	Parts          []PartInfo `yaml:"parts"`
+	TargetS3Path   string     `yaml:"target_s3_path"`
+	ParentS3Path   string     `yaml:"parent_s3_path"`
 }
 
 type BackupRef struct {
@@ -66,6 +68,7 @@ type BackupRef struct {
 	Snapshot   string `yaml:"snapshot"`
 	Manifest   string `yaml:"manifest"`
 	Blake3Hash string `yaml:"blake3_hash"`
+	S3Path     string `yaml:"s3_path"`
 }
 
 type LastBackup struct {

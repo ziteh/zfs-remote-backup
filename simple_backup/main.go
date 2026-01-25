@@ -239,9 +239,11 @@ func runBackup(_ context.Context, configPath string, backupLevel int16, taskName
 	// Determine parent snapshot for diff/incr backups
 	lastPath := filepath.Join(config.BaseDir, "run", task.Pool, task.Dataset, "last_backup_manifest.yaml")
 	var parentSnapshot string = ""
+	var last *LastBackup
 	if backupLevel > 0 {
 		// find parent snapshot from last backup manifest
-		last, err := readLastBackupManifest(lastPath)
+		var err error
+		last, err = readLastBackupManifest(lastPath)
 		if err != nil || last == nil {
 			slog.Error("Failed to determine base for backup", "error", err)
 			os.Exit(1)
@@ -449,6 +451,11 @@ func runBackup(_ context.Context, configPath string, backupLevel int16, taskName
 			AgePublicKey:   config.AgePublicKey,
 			Blake3Hash:     blake3Hash,
 			Parts:          partInfos,
+			TargetS3Path:   filepath.Join(task.Pool, task.Dataset, taskDirName),
+			ParentS3Path:   "",
+		}
+		if backupLevel > 0 {
+			manifest.ParentS3Path = last.BackupLevels[backupLevel-1].S3Path
 		}
 		manifestPath = filepath.Join(outputDir, "task_manifest.yaml")
 		if err := writeManifest(manifestPath, &manifest); err != nil {
@@ -487,30 +494,31 @@ func runBackup(_ context.Context, configPath string, backupLevel int16, taskName
 
 	// Update last backup manifest
 	lastPath = filepath.Join(config.BaseDir, "run", task.Pool, task.Dataset, "last_backup_manifest.yaml")
-	var last LastBackup
+	var currentLast LastBackup
 	if existing, err := readLastBackupManifest(lastPath); err == nil && existing != nil {
-		last = *existing
+		currentLast = *existing
 	}
-	last.Pool = task.Pool
-	last.Dataset = task.Dataset
+	currentLast.Pool = task.Pool
+	currentLast.Dataset = task.Dataset
 	ref := &BackupRef{
 		Datetime:   time.Now().Unix(),
 		Snapshot:   latestSnapshot,
 		Manifest:   manifestPath,
 		Blake3Hash: blake3Hash,
+		S3Path:     filepath.Join(task.Pool, task.Dataset, taskDirName),
 	}
 	// Ensure BackupLevels slice is initialized and large enough
-	if last.BackupLevels == nil {
-		last.BackupLevels = make([]*BackupRef, int(backupLevel)+1)
-	} else if len(last.BackupLevels) <= int(backupLevel) {
+	if currentLast.BackupLevels == nil {
+		currentLast.BackupLevels = make([]*BackupRef, int(backupLevel)+1)
+	} else if len(currentLast.BackupLevels) <= int(backupLevel) {
 		// extend slice to required length
-		needed := int(backupLevel) + 1 - len(last.BackupLevels)
-		for i := 0; i < needed; i++ {
-			last.BackupLevels = append(last.BackupLevels, nil)
+		needed := int(backupLevel) + 1 - len(currentLast.BackupLevels)
+		for range needed {
+			currentLast.BackupLevels = append(currentLast.BackupLevels, nil)
 		}
 	}
-	last.BackupLevels[backupLevel] = ref
-	if err := writeLastBackupManifest(lastPath, &last); err != nil {
+	currentLast.BackupLevels[backupLevel] = ref
+	if err := writeLastBackupManifest(lastPath, &currentLast); err != nil {
 		slog.Warn("Failed to write last backup manifest", "error", err)
 	} else {
 		slog.Info("Last backup manifest written", "path", lastPath)
