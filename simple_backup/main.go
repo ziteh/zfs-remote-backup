@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"filippo.io/age"
-	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/urfave/cli/v3"
 )
 
@@ -38,21 +37,21 @@ func main() {
 						Value: "zrb_simple_config.yaml",
 					},
 					&cli.StringFlag{
-						Name:     "type",
-						Usage:    "Type of backup to perform (full, diff, incr).",
-						Required: true,
-					},
-					&cli.StringFlag{
 						Name:     "task",
 						Usage:    "Name of the backup task to run.",
+						Required: true,
+					},
+					&cli.Int16Flag{
+						Name:     "level",
+						Usage:    "Backup level to perform.",
 						Required: true,
 					},
 				},
 				Action: func(ctx context.Context, cmd *cli.Command) error {
 					configPath := cmd.String("config")
-					backupType := cmd.String("type")
 					taskName := cmd.String("task")
-					return runBackup(ctx, configPath, backupType, taskName)
+					backupLevel := cmd.Int16("level")
+					return runBackup(ctx, configPath, backupLevel, taskName)
 				},
 			},
 			{
@@ -72,7 +71,7 @@ func main() {
 					&cli.StringFlag{
 						Name:  "prefix",
 						Usage: "Snapshot name prefix",
-						Value: "zrb",
+						Value: "zrb_level0",
 					},
 				},
 				Action: func(ctx context.Context, cmd *cli.Command) error {
@@ -111,9 +110,9 @@ func generateKey(_ context.Context) error {
 	return nil
 }
 
-func runBackup(_ context.Context, configPath string, backupType string, taskName string) error {
-	if backupType != "full" && backupType != "diff" && backupType != "incr" {
-		return fmt.Errorf("invalid backup type: %s", backupType)
+func runBackup(_ context.Context, configPath string, backupLevel int16, taskName string) error {
+	if backupLevel < 0 {
+		return fmt.Errorf("backup level must be non-negative")
 	}
 	if taskName == "" {
 		return fmt.Errorf("task name must be specified")
@@ -158,7 +157,7 @@ func runBackup(_ context.Context, configPath string, backupType string, taskName
 	logger, logFile := NewLogger(logPath)
 	defer logFile.Close()
 	slog.SetDefault(logger)
-	slog.Info("Backup started", "type", backupType, "pool", task.Pool, "dataset", task.Dataset)
+	slog.Info("Backup started", "level", backupLevel, "pool", task.Pool, "dataset", task.Dataset)
 
 	// Prepare run directory
 	runDir := filepath.Join(config.BaseDir, "run", task.Pool, task.Dataset)
@@ -181,7 +180,7 @@ func runBackup(_ context.Context, configPath string, backupType string, taskName
 	}()
 
 	// Find latest snapshot
-	snapshots, err := listSnapshots(task.Pool, task.Dataset, "zrb_"+backupType)
+	snapshots, err := listSnapshots(task.Pool, task.Dataset, "zrb_level"+fmt.Sprint(backupLevel))
 	if err != nil {
 		slog.Error("Failed to list snapshots", "error", err)
 		os.Exit(1)
@@ -195,7 +194,7 @@ func runBackup(_ context.Context, configPath string, backupType string, taskName
 	slog.Info("Latest snapshot found", "latestSnapshot", latestSnapshot, "count", len(snapshots))
 
 	// Prepare output directory
-	taskDirName := fmt.Sprintf("%s_%s", backupType, time.Now().Format("20060102"))
+	taskDirName := fmt.Sprintf("level%d_%s", backupLevel, time.Now().Format("20060102"))
 	outputDir := filepath.Join(config.BaseDir, "task", task.Pool, task.Dataset, taskDirName)
 	// Clean up output directory if it exists
 	if _, err := os.Stat(outputDir); err == nil {
@@ -213,29 +212,20 @@ func runBackup(_ context.Context, configPath string, backupType string, taskName
 	// Determine parent snapshot for diff/incr backups
 	lastPath := filepath.Join(config.BaseDir, "run", task.Pool, task.Dataset, "last_backup_manifest.yaml")
 	var parentSnapshot string = ""
-	switch backupType {
-	case "diff":
-		last, err := readLastBackupManifest(lastPath)
-		if err != nil || last == nil || last.Full == nil {
-			slog.Error("Failed to determine base for diff", "error", err)
-			os.Exit(1)
-		}
-		parentSnapshot = last.Full.Snapshot
-	case "incr":
+	if backupLevel > 0 {
+		// find parent snapshot from last backup manifest
 		last, err := readLastBackupManifest(lastPath)
 		if err != nil || last == nil {
-			slog.Error("Failed to determine base for incr", "error", err)
+			slog.Error("Failed to determine base for backup", "error", err)
 			os.Exit(1)
 		}
-		// prefer most recent: incr > diff > full
-		if last.Incr != nil {
-			parentSnapshot = last.Incr.Snapshot
-		} else if last.Diff != nil {
-			parentSnapshot = last.Diff.Snapshot
-		} else if last.Full != nil {
-			parentSnapshot = last.Full.Snapshot
+
+		// Find upper level backup snapshot
+		if last.BackupLevels != nil && int16(len(last.BackupLevels)) >= backupLevel {
+			parentSnapshot = last.BackupLevels[backupLevel-1].Snapshot
+			slog.Info("Found parent snapshot from last backup manifest", "parentSnapshot", parentSnapshot)
 		} else {
-			slog.Error("Failed to determine base for incr", "error", err)
+			slog.Error("Failed to determine base for backup, no previous backups found")
 			os.Exit(1)
 		}
 	}
@@ -275,15 +265,7 @@ func runBackup(_ context.Context, configPath string, backupType string, taskName
 	var manifestBackend RemoteBackend = nil
 	ctxBg := context.Background()
 	if config.S3.Enabled {
-		var storageClass types.StorageClass
-		switch backupType {
-		case "full":
-			storageClass = config.S3.StorageClass.FullBackup
-		case "diff":
-			storageClass = config.S3.StorageClass.DiffBackup
-		case "incr":
-			storageClass = config.S3.StorageClass.IncrBackup
-		}
+		storageClass := config.S3.StorageClass.BackupData[backupLevel]
 		s3Backend, err := NewS3Backend(ctxBg, config.S3.Bucket, config.S3.Region, config.S3.Prefix, config.S3.Endpoint, storageClass)
 		if err != nil {
 			slog.Error("Failed to initialize S3 backend", "error", err)
@@ -330,7 +312,7 @@ func runBackup(_ context.Context, configPath string, backupType string, taskName
 			if backend != nil {
 				slog.Info("Uploading part file to remote backend", "encryptedFile", encryptedFile)
 				remotePath := filepath.Join("data", task.Pool, task.Dataset, taskDirName, filepath.Base(encryptedFile))
-				if err := backend.Upload(ctxBg, encryptedFile, remotePath, sha256Hash, backupType); err != nil {
+				if err := backend.Upload(ctxBg, encryptedFile, remotePath, sha256Hash, backupLevel); err != nil {
 					slog.Error("Failed to upload part file", "encryptedFile", encryptedFile, "error", err)
 					errChan <- err
 					return
@@ -369,7 +351,7 @@ func runBackup(_ context.Context, configPath string, backupType string, taskName
 		System:         systemInfo,
 		Pool:           task.Pool,
 		Dataset:        task.Dataset,
-		BackupType:     backupType,
+		BackupLevel:    backupLevel,
 		TargetSnapshot: targetSnapshot,
 		ParentSnapshot: parentSnapshot,
 		AgePublicKey:   config.AgePublicKey,
@@ -391,7 +373,7 @@ func runBackup(_ context.Context, configPath string, backupType string, taskName
 			os.Exit(1)
 		}
 		remotePath := filepath.Join("manifests", task.Pool, task.Dataset, taskDirName, "task_manifest.yaml")
-		if err := manifestBackend.Upload(ctxBg, manifestPath, remotePath, manifestSHA256, "manifest"); err != nil {
+		if err := manifestBackend.Upload(ctxBg, manifestPath, remotePath, manifestSHA256, -1); err != nil {
 			slog.Error("Failed to upload manifest", "error", err)
 			os.Exit(1)
 		}
@@ -412,14 +394,7 @@ func runBackup(_ context.Context, configPath string, backupType string, taskName
 		Manifest:   manifestPath,
 		Blake3Hash: blake3Hash,
 	}
-	switch backupType {
-	case "full":
-		last.Full = ref
-	case "diff":
-		last.Diff = ref
-	case "incr":
-		last.Incr = ref
-	}
+	last.BackupLevels[backupLevel] = ref
 	if err := writeLastBackupManifest(lastPath, &last); err != nil {
 		slog.Warn("Failed to write last backup manifest", "error", err)
 	} else {
@@ -430,7 +405,7 @@ func runBackup(_ context.Context, configPath string, backupType string, taskName
 	if manifestBackend != nil {
 		if lastSHA, err := calculateSHA256(lastPath); err == nil {
 			remoteLastPath := filepath.Join("manifests", task.Pool, task.Dataset, "last_backup_manifest.yaml")
-			if err := manifestBackend.Upload(ctxBg, lastPath, remoteLastPath, lastSHA, "manifest"); err != nil {
+			if err := manifestBackend.Upload(ctxBg, lastPath, remoteLastPath, lastSHA, -1); err != nil {
 				slog.Warn("Failed to upload last backup manifest", "error", err)
 			} else {
 				slog.Info("Uploaded last backup manifest to remote", "remote", remoteLastPath)

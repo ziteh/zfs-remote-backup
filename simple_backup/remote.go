@@ -17,7 +17,7 @@ import (
 
 // RemoteBackend defines the interface for remote storage
 type RemoteBackend interface {
-	Upload(ctx context.Context, localPath, remotePath, sha256Hash, backupType string) error
+	Upload(ctx context.Context, localPath, remotePath, sha256Hash string, backupLevel int16) error
 }
 
 // S3Backend implements RemoteBackend for AWS S3
@@ -82,11 +82,13 @@ func NewS3Backend(ctx context.Context, bucket, region, prefix, endpoint string, 
 }
 
 // Upload uploads a file to S3 with SHA256 checksum for integrity verification
-func (s *S3Backend) Upload(ctx context.Context, localPath, remotePath, sha256Hash, backupType string) error {
-	if backupType != "full" && backupType != "diff" && backupType != "incr" && backupType != "manifest" {
-		return fmt.Errorf("invalid backup type: %s", backupType)
+func (s *S3Backend) Upload(ctx context.Context, localPath, remotePath, sha256Hash string, backupLevel int16) error {
+	var levelTag string
+	if backupLevel < 0 {
+		levelTag = "manifest"
+	} else {
+		levelTag = fmt.Sprint(backupLevel)
 	}
-
 	file, err := os.Open(localPath)
 	if err != nil {
 		return fmt.Errorf("failed to open file: %w", err)
@@ -100,7 +102,7 @@ func (s *S3Backend) Upload(ctx context.Context, localPath, remotePath, sha256Has
 		Key:          aws.String(key),
 		Body:         file,
 		StorageClass: s.storageClass,
-		Tagging:      aws.String("backup-type=" + backupType),
+		Tagging:      aws.String("backup-level=" + levelTag),
 	}
 	// TODO: Add to metadata?
 	// Include checksum only if not using custom endpoint

@@ -7,10 +7,8 @@ s3:
   region: us-east-1
   endpoint: "http://127.0.0.1:9000" # point to local MinIO
   storage_class: # Options: STANDARD, INTELLIGENT_TIERING, STANDARD_IA, ONEZONE_IA, GLACIER, DEEP_ARCHIVE, GLACIER_IR
-    full_backup: STANDARD
-    diff_backup: STANDARD
-    incr_backup: STANDARD
     manifest: STANDARD
+    backup_data: [DEEP_ARCHIVE, DEEP_ARCHIVE, GLACIER, GLACIER_IR]
 tasks:
   - name: daily_backup
     description: Daily backup task

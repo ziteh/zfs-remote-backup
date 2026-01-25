@@ -22,20 +22,16 @@ type Config struct {
 	Tasks        []BackupTask `yaml:"tasks"`
 }
 
-type StorageClassSet struct {
-	FullBackup types.StorageClass `yaml:"full_backup"`
-	DiffBackup types.StorageClass `yaml:"diff_backup"`
-	IncrBackup types.StorageClass `yaml:"incr_backup"`
-	Manifest   types.StorageClass `yaml:"manifest"`
-}
-
 type S3Config struct {
-	Enabled      bool            `yaml:"enabled"`
-	Bucket       string          `yaml:"bucket"`
-	Prefix       string          `yaml:"prefix"`
-	Region       string          `yaml:"region"`
-	Endpoint     string          `yaml:"endpoint"` // For S3 compatible services
-	StorageClass StorageClassSet `yaml:"storage_class"`
+	Enabled      bool   `yaml:"enabled"`
+	Bucket       string `yaml:"bucket"`
+	Prefix       string `yaml:"prefix"`
+	Region       string `yaml:"region"`
+	Endpoint     string `yaml:"endpoint"` // For S3 compatible services
+	StorageClass struct {
+		BackupData []types.StorageClass `yaml:"backup_data"` // By level
+		Manifest   types.StorageClass   `yaml:"manifest"`
+	} `yaml:"storage_class"`
 }
 
 type PartInfo struct {
@@ -57,7 +53,7 @@ type BackupManifest struct {
 	System         SystemInfo `yaml:"system"`
 	Pool           string     `yaml:"pool"`
 	Dataset        string     `yaml:"dataset"`
-	BackupType     string     `yaml:"backup_type"`
+	BackupLevel    int16      `yaml:"backup_level"`
 	TargetSnapshot string     `yaml:"target_snapshot"`
 	ParentSnapshot string     `yaml:"parent_snapshot"`
 	AgePublicKey   string     `yaml:"age_public_key"`
@@ -73,11 +69,9 @@ type BackupRef struct {
 }
 
 type LastBackup struct {
-	Pool    string     `yaml:"pool"`
-	Dataset string     `yaml:"dataset"`
-	Full    *BackupRef `yaml:"full,omitempty"`
-	Diff    *BackupRef `yaml:"diff,omitempty"`
-	Incr    *BackupRef `yaml:"incr,omitempty"`
+	Pool         string       `yaml:"pool"`
+	Dataset      string       `yaml:"dataset"`
+	BackupLevels []*BackupRef `yaml:"backup_levels"`
 }
 
 func loadConfig(filename string) (*Config, error) {
