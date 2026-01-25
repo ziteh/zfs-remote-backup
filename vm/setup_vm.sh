@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-VM_NAME="zfs-minio"
+VM_NAME="zrb-vm"
 SETUP_SCRIPT="init.sh"
 TEST_SCRIPT="test.sh"
 
