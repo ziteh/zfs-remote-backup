@@ -69,5 +69,5 @@ func NewLogger(filename string) (*slog.Logger, *os.File) {
 		},
 	}
 
-	return slog.New(handler) , file
+	return slog.New(handler), file
 }

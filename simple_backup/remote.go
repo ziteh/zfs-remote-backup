@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 
@@ -51,14 +51,14 @@ func NewS3Backend(ctx context.Context, bucket, region, prefix, endpoint string, 
 			o.BaseEndpoint = aws.String(endpoint)
 			o.UsePathStyle = true
 		})
-		log.Printf("S3 client initialized with custom endpoint: %s", endpoint)
+		slog.Info("S3 client initialized with custom endpoint", "endpoint", endpoint)
 	} else {
 		// AWS S3
 		client = s3.NewFromConfig(cfg)
 	}
 
 	uploader := manager.NewUploader(client, func(u *manager.Uploader) {
-		// 64MB
+		// In bytes
 		u.PartSize = 64 * 1024 * 1024
 		// Checksum is always calculated if supported. (Default)
 		u.RequestChecksumCalculation = aws.RequestChecksumCalculationWhenSupported
@@ -69,7 +69,7 @@ func NewS3Backend(ctx context.Context, bucket, region, prefix, endpoint string, 
 		return nil, fmt.Errorf("storage class must be specified")
 	}
 	sc := storageClass
-	log.Printf("Using storage class: %s", sc)
+	slog.Info("Using storage class", "storageClass", sc)
 
 	return &S3Backend{
 		client:         client,
@@ -114,6 +114,6 @@ func (s *S3Backend) Upload(ctx context.Context, localPath, remotePath, sha256Has
 		return fmt.Errorf("failed to upload to S3: %w", err)
 	}
 
-	log.Printf("  Uploaded to S3: s3://%s/%s (storage class: %s)", s.bucket, key, s.storageClass)
+	slog.Info("Uploaded to S3", "bucket", s.bucket, "key", key, "storageClass", s.storageClass)
 	return nil
 }

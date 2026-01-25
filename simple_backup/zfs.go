@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log"
 	"log/slog"
 
 	"os"
@@ -34,7 +33,6 @@ func runZfsSendAndSplit(targetSnapshot, parentSnapshot, exportDir string) (strin
 			for _, f := range matches {
 				if err := os.Remove(f); err != nil {
 					slog.Warn("Failed to clean up", "file", f, "error", err)
-					log.Printf("Warning: failed to clean up %s: %v", f, err)
 				}
 			}
 		}
@@ -45,10 +43,8 @@ func runZfsSendAndSplit(targetSnapshot, parentSnapshot, exportDir string) (strin
 	if parentSnapshot != "" {
 		args = append(args, "-i", parentSnapshot)
 		slog.Info("Running incremental send", "parentSnapshot", parentSnapshot, "snapshot", targetSnapshot)
-		log.Printf("Running incremental send: %s %s", parentSnapshot, targetSnapshot)
 	} else {
 		slog.Info("Running full send", "snapshot", targetSnapshot)
-		log.Printf("Running full send: %s", targetSnapshot)
 	}
 	args = append(args, targetSnapshot)
 	zfsCmd := exec.CommandContext(ctx, "zfs", args...)
@@ -72,7 +68,7 @@ func runZfsSendAndSplit(targetSnapshot, parentSnapshot, exportDir string) (strin
 		defer cancelRelease()
 		if err := exec.CommandContext(releaseCtx, "zfs", "release", holdTag, targetSnapshot).Run(); err != nil {
 			slog.Warn("Failed to release snapshot hold", "holdTag", holdTag, "error", err)
-			log.Printf("Warning: failed to release snapshot hold %s: %v", holdTag, err)
+
 		}
 	}()
 
@@ -147,9 +143,6 @@ func runZfsSendAndSplit(targetSnapshot, parentSnapshot, exportDir string) (strin
 	success = true
 	blake3Hash := fmt.Sprintf("%x", hasher.Sum(nil))
 	slog.Info("ZFS send and split completed successfully", "outputPattern", outputPattern, "blake3", blake3Hash)
-	log.Printf("ZFS send and split completed successfully")
-	log.Printf("Output: %s*", outputPattern)
-	log.Printf("BLAKE3: %s", blake3Hash)
 
 	return blake3Hash, nil
 }

@@ -4,7 +4,7 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"os"
 
 	"filippo.io/age"
@@ -12,27 +12,27 @@ import (
 
 // processPartFile encrypts a snapshot part, calculates SHA256, and removes the original
 func processPartFile(partFile string, recipient age.Recipient) (string, string, error) {
-	log.Printf("Processing %s...", partFile)
+	slog.Info("Processing part file", "partFile", partFile)
 
 	// Age encryption
 	encryptedFile := partFile + ".age"
 	if err := encryptWithAge(partFile, encryptedFile, recipient); err != nil {
 		return "", "", fmt.Errorf("age encryption failed: %w", err)
 	}
-	log.Printf("  Encrypted to: %s", encryptedFile)
+	slog.Info("Encrypted to", "encryptedFile", encryptedFile)
 
 	// SHA-256 hash
 	sha256Hash, err := calculateSHA256(encryptedFile)
 	if err != nil {
 		return "", "", fmt.Errorf("SHA-256 hash failed: %w", err)
 	}
-	log.Printf("  SHA-256: %s", sha256Hash)
+	slog.Info("SHA-256", "hash", sha256Hash)
 
 	// Delete original file
 	if err := os.Remove(partFile); err != nil {
 		return "", "", fmt.Errorf("failed to remove original file: %w", err)
 	}
-	log.Printf("  Removed original file: %s", partFile)
+	slog.Info("Removed original file", "partFile", partFile)
 
 	return sha256Hash, encryptedFile, nil
 }
