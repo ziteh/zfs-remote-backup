@@ -74,6 +74,20 @@ type LastBackup struct {
 	BackupLevels []*BackupRef `yaml:"backup_levels"`
 }
 
+type BackupState struct {
+	TaskName         string          `yaml:"task_name"`
+	BackupLevel      int16           `yaml:"backup_level"`
+	TargetSnapshot   string          `yaml:"target_snapshot"`
+	ParentSnapshot   string          `yaml:"parent_snapshot"`
+	OutputDir        string          `yaml:"output_dir"`
+	Blake3Hash       string          `yaml:"blake3_hash"`
+	PartsProcessed   map[string]bool `yaml:"parts_processed"` // part index -> processed
+	PartsUploaded    map[string]bool `yaml:"parts_uploaded"`  // part index -> uploaded
+	ManifestCreated  bool            `yaml:"manifest_created"`
+	ManifestUploaded bool            `yaml:"manifest_uploaded"`
+	LastUpdated      int64           `yaml:"last_updated"`
+}
+
 func loadConfig(filename string) (*Config, error) {
 	data, err := os.ReadFile(filename)
 	if err != nil {

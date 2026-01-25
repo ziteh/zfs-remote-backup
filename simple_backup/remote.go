@@ -1,8 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -28,6 +30,15 @@ type S3Backend struct {
 	prefix         string
 	storageClass   types.StorageClass
 	customEndpoint bool
+	uploadStates   map[string]*multipartUploadState // key -> state
+}
+
+type multipartUploadState struct {
+	UploadID  string
+	Parts     []types.CompletedPart
+	PartSize  int64
+	TotalSize int64
+	Uploaded  int64
 }
 
 // NewS3Backend creates a new S3 backend
@@ -78,10 +89,11 @@ func NewS3Backend(ctx context.Context, bucket, region, prefix, endpoint string, 
 		prefix:         prefix,
 		storageClass:   sc,
 		customEndpoint: endpoint != "",
+		uploadStates:   make(map[string]*multipartUploadState),
 	}, nil
 }
 
-// Upload uploads a file to S3 with SHA256 checksum for integrity verification
+// Upload uploads a file to S3 with resumable multipart upload
 func (s *S3Backend) Upload(ctx context.Context, localPath, remotePath, sha256Hash string, backupLevel int16) error {
 	var levelTag string
 	if backupLevel < 0 {
@@ -110,25 +122,114 @@ func (s *S3Backend) Upload(ctx context.Context, localPath, remotePath, sha256Has
 		}
 	}
 
-	input := &s3.PutObjectInput{
-		Bucket:       aws.String(s.bucket),
-		Key:          aws.String(key),
-		Body:         file,
-		StorageClass: s.storageClass,
-		Tagging:      aws.String("backup-level=" + levelTag),
-	}
-	// TODO: Add to metadata?
-	// Include checksum only if not using custom endpoint
-	// if !s.customEndpoint && sha256Hash != "" {
-	// 	input.ChecksumAlgorithm = types.ChecksumAlgorithmSha256
-	// 	input.ChecksumSHA256 = aws.String(sha256Hash)
-	// }
-
-	_, err = s.uploader.Upload(ctx, input)
+	// Get file size
+	fileInfo, err := file.Stat()
 	if err != nil {
-		return fmt.Errorf("failed to upload to S3: %w", err)
+		return fmt.Errorf("failed to stat file: %w", err)
+	}
+	fileSize := fileInfo.Size()
+
+	// If file is small, use simple upload
+	if fileSize < 100*1024*1024 { // 100MB
+		input := &s3.PutObjectInput{
+			Bucket:       aws.String(s.bucket),
+			Key:          aws.String(key),
+			Body:         file,
+			StorageClass: s.storageClass,
+			Tagging:      aws.String("backup-level=" + levelTag),
+		}
+		_, err = s.uploader.Upload(ctx, input)
+		if err != nil {
+			return fmt.Errorf("failed to upload to S3: %w", err)
+		}
+		slog.Info("Uploaded to S3", "bucket", s.bucket, "key", key, "storageClass", s.storageClass)
+		return nil
 	}
 
-	slog.Info("Uploaded to S3", "bucket", s.bucket, "key", key, "storageClass", s.storageClass)
+	// Multipart upload for large files
+	return s.uploadMultipart(ctx, file, key, fileSize, levelTag)
+}
+
+// TODO: really need manual multipart upload? any high level library support?
+func (s *S3Backend) uploadMultipart(ctx context.Context, file *os.File, key string, fileSize int64, levelTag string) error {
+	partSize := int64(64 * 1024 * 1024) // 64MB
+	stateKey := key
+
+	// Check if there's an existing upload state
+	state, exists := s.uploadStates[stateKey]
+	if !exists {
+		// Start new multipart upload
+		createResp, err := s.client.CreateMultipartUpload(ctx, &s3.CreateMultipartUploadInput{
+			Bucket:       aws.String(s.bucket),
+			Key:          aws.String(key),
+			StorageClass: s.storageClass,
+			Tagging:      aws.String("backup-level=" + levelTag),
+		})
+		if err != nil {
+			return fmt.Errorf("failed to create multipart upload: %w", err)
+		}
+		state = &multipartUploadState{
+			UploadID:  *createResp.UploadId,
+			Parts:     []types.CompletedPart{},
+			PartSize:  partSize,
+			TotalSize: fileSize,
+			Uploaded:  0,
+		}
+		s.uploadStates[stateKey] = state
+		slog.Info("Started multipart upload", "key", key, "uploadId", state.UploadID)
+	}
+
+	// Calculate number of parts
+	numParts := (fileSize + partSize - 1) / partSize
+
+	// Upload remaining parts
+	for partNum := int32(len(state.Parts) + 1); partNum <= int32(numParts); partNum++ {
+		offset := int64(partNum-1) * partSize
+		size := partSize
+		if offset+size > fileSize {
+			size = fileSize - offset
+		}
+
+		buffer := make([]byte, size)
+		_, err := file.ReadAt(buffer, offset)
+		if err != nil && err != io.EOF {
+			return fmt.Errorf("failed to read file part: %w", err)
+		}
+
+		uploadResp, err := s.client.UploadPart(ctx, &s3.UploadPartInput{
+			Bucket:     aws.String(s.bucket),
+			Key:        aws.String(key),
+			PartNumber: aws.Int32(partNum),
+			UploadId:   aws.String(state.UploadID),
+			Body:       bytes.NewReader(buffer),
+		})
+		if err != nil {
+			return fmt.Errorf("failed to upload part %d: %w", partNum, err)
+		}
+
+		state.Parts = append(state.Parts, types.CompletedPart{
+			ETag:       uploadResp.ETag,
+			PartNumber: aws.Int32(partNum),
+		})
+		state.Uploaded += size
+		slog.Info("Uploaded part", "part", partNum, "uploaded", state.Uploaded, "total", fileSize)
+	}
+
+	// Complete the multipart upload
+	_, err := s.client.CompleteMultipartUpload(ctx, &s3.CompleteMultipartUploadInput{
+		Bucket:   aws.String(s.bucket),
+		Key:      aws.String(key),
+		UploadId: aws.String(state.UploadID),
+		MultipartUpload: &types.CompletedMultipartUpload{
+			Parts: state.Parts,
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("failed to complete multipart upload: %w", err)
+	}
+
+	// Clean up state
+	delete(s.uploadStates, stateKey)
+	slog.Info("Completed multipart upload", "bucket", s.bucket, "key", key)
 	return nil
 }

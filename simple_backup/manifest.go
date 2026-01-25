@@ -77,3 +77,23 @@ func readLastBackupManifest(filename string) (*LastBackup, error) {
 	}
 	return &last, nil
 }
+
+func writeBackupState(filename string, state *BackupState) error {
+	data, err := yaml.Marshal(state)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(filename, data, 0644)
+}
+
+func readBackupState(filename string) (*BackupState, error) {
+	data, err := os.ReadFile(filename)
+	if err != nil {
+		return nil, err
+	}
+	var state BackupState
+	if err := yaml.Unmarshal(data, &state); err != nil {
+		return nil, err
+	}
+	return &state, nil
+}
