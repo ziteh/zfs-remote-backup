@@ -104,6 +104,13 @@ for file in "$DOWNLOAD_DIR"/*; do
   fi
 done
 log_success "Binaries transferred."
+
+# Create age private key on the VM for tests
+log_info "Installing test Age private key on VM"
+multipass exec "$VM_NAME" -- bash -lc 'cat > /home/ubuntu/age_private_key.txt <<"KEY"
+AGE-SECRET-KEY-1Q0DFM9WHSEV0K7MPJA02LFQV6CE28JAZ6EQTVWG9KRLSMWS74TFSA7SNWJ
+KEY
+'
 multipass exec "$VM_NAME" -- sudo bash "/tmp/$SETUP_SCRIPT"
 log_success "Setup script completed"
 echo ""
