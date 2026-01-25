@@ -97,6 +97,19 @@ func (s *S3Backend) Upload(ctx context.Context, localPath, remotePath, sha256Has
 
 	key := filepath.ToSlash(filepath.Join(s.prefix, remotePath))
 
+	// Check if the object already exists on S3
+	headOutput, err := s.client.HeadObject(ctx, &s3.HeadObjectInput{
+		Bucket: aws.String(s.bucket),
+		Key:    aws.String(key),
+	})
+	if err == nil {
+		localFileInfo, _ := os.Stat(localPath)
+		if aws.ToInt64(headOutput.ContentLength) == localFileInfo.Size() {
+			slog.Info("Object already exists on S3 with matching size, skipping upload", "bucket", s.bucket, "key", key)
+			return nil
+		}
+	}
+
 	input := &s3.PutObjectInput{
 		Bucket:       aws.String(s.bucket),
 		Key:          aws.String(key),
