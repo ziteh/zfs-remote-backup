@@ -25,6 +25,41 @@ if ! command -v multipass &> /dev/null; then
   exit 1
 fi
 
+# Download required binaries
+DOWNLOAD_DIR="./downloads"
+mkdir -p "$DOWNLOAD_DIR"
+
+# gitignore
+touch "$DOWNLOAD_DIR/.gitignore"
+echo "*" >> "$DOWNLOAD_DIR/.gitignore"
+
+
+log_info "Downloading required binaries..."
+
+# Age
+if [ ! -f "$DOWNLOAD_DIR/age.tar.gz" ]; then
+  log_info "Downloading age..."
+  curl -L -o "$DOWNLOAD_DIR/age.tar.gz" https://github.com/FiloSottile/age/releases/download/v1.3.1/age-v1.3.1-linux-arm64.tar.gz
+else
+  log_info "age already downloaded."
+fi
+
+# MinIO Server (arm64)
+if [ ! -f "$DOWNLOAD_DIR/minio" ]; then
+  log_info "Downloading MinIO Server..."
+  curl -L -o "$DOWNLOAD_DIR/minio" https://dl.min.io/server/minio/release/linux-arm64/minio
+else
+  log_info "MinIO Server already downloaded."
+fi
+if [ ! -f "$DOWNLOAD_DIR/mc" ]; then
+  log_info "Downloading MinIO Client..."
+  curl -L -o "$DOWNLOAD_DIR/mc" https://dl.min.io/client/mc/release/linux-arm64/mc
+else
+  log_info "MinIO Client already downloaded."
+fi
+
+log_success "Downloads completed."
+
 # Create and setup VM
 log_info "Creating Multipass VM..."
 
@@ -61,6 +96,14 @@ if [ ! -f "$SETUP_SCRIPT" ]; then
   exit 1
 fi
 multipass transfer "$SETUP_SCRIPT" "$VM_NAME:/tmp/"
+# Transfer downloaded binaries
+log_info "Transferring downloaded binaries..."
+for file in "$DOWNLOAD_DIR"/*; do
+  if [ -f "$file" ]; then
+    multipass transfer "$file" "$VM_NAME:/tmp/"
+  fi
+done
+log_success "Binaries transferred."
 multipass exec "$VM_NAME" -- sudo bash "/tmp/$SETUP_SCRIPT"
 log_success "Setup script completed"
 echo ""

@@ -17,12 +17,11 @@ if ! zpool list testpool > /dev/null 2>&1; then
 fi
 
 # Install shasum (via coreutils)
-echo "Installing additional tools..."
-sudo apt-get install -y coreutils wget
+sudo apt-get install -y coreutils
 
 # Install age
 echo "Installing age..."
-wget -q https://github.com/FiloSottile/age/releases/download/v1.1.1/age-v1.1.1-linux-amd64.tar.gz -O age.tar.gz
+cp /tmp/age.tar.gz .
 if [ -f age.tar.gz ]; then
     tar -xzf age.tar.gz
     if [ -d age ]; then
@@ -35,38 +34,16 @@ if [ -f age.tar.gz ]; then
         exit 1
     fi
 else
-    echo "Failed to download age."
-    exit 1
-fi
-
-# Install b3sum (BLAKE3)
-echo "Installing b3sum..."
-wget -q https://github.com/BLAKE3-team/BLAKE3/releases/download/1.8.3/b3sum_linux_x64_bin -O b3sum
-if [ -f b3sum ]; then
-    chmod +x b3sum
-    sudo mv b3sum /usr/local/bin/
-    echo "b3sum installed successfully."
-else
-    echo "Failed to download b3sum."
+    echo "Failed to copy age."
     exit 1
 fi
 
 echo "Additional tools installed successfully."
 
 # Install MinIO
-echo "Downloading MinIO Server and Client..."
-ARCH=$(uname -m)
-if [ "$ARCH" = "aarch64" ]; then
-    # Server
-    wget -q https://dl.min.io/server/minio/release/linux-arm64/minio -O minio
-    # Client
-    wget -q https://dl.min.io/client/mc/release/linux-arm64/mc -O mc
-else
-    # Server
-    wget -q https://dl.min.io/server/minio/release/linux-amd64/minio -O minio
-    # Client
-    wget -q https://dl.min.io/client/mc/release/linux-amd64/mc -O mc
-fi
+echo "Installing MinIO Server and Client..."
+cp /tmp/minio .
+cp /tmp/mc .
 chmod +x minio mc
 sudo mv minio $MINIO_BIN
 sudo mv mc $MC_BIN
