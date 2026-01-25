@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"filippo.io/age"
@@ -299,33 +300,58 @@ func runBackup(_ context.Context, configPath string, backupType string, taskName
 		slog.Info("S3 backend for manifests initialized", "bucket", config.S3.Bucket, "region", config.S3.Region, "prefix", config.S3.Prefix)
 	}
 
-	// Encrypt and upload parts
+	// Encrypt and upload parts concurrently
 	var partInfos []PartInfo
+	var wg sync.WaitGroup
+	partInfoChan := make(chan PartInfo, len(rawParts))
+	errChan := make(chan error, len(rawParts))
 	for _, partFile := range rawParts {
-		slog.Info("Encryption and upload started for part file", "partFile", partFile)
-		sha256Hash, encryptedFile, err := processPartFile(partFile, recipient)
-		if err != nil {
-			slog.Error("Failed to process part file", "partFile", partFile, "error", err)
-			os.Exit(1)
-		}
-		slog.Debug("Part file encrypted", "partFile", partFile, "encryptedFile", encryptedFile, "sha256", sha256Hash)
-
-		baseName := filepath.Base(partFile)
-		index := strings.TrimPrefix(baseName, "snapshot.part-")
-		partInfos = append(partInfos, PartInfo{
-			Index:      index,
-			SHA256Hash: sha256Hash,
-		})
-
-		// Upload to remote backend if configured
-		if backend != nil {
-			slog.Info("Uploading part file to remote backend", "encryptedFile", encryptedFile)
-			remotePath := filepath.Join("data", task.Pool, task.Dataset, taskDirName, filepath.Base(encryptedFile))
-			if err := backend.Upload(ctxBg, encryptedFile, remotePath, sha256Hash, backupType); err != nil {
-				slog.Error("Failed to upload part file", "encryptedFile", encryptedFile, "error", err)
-				os.Exit(1)
+		wg.Add(1)
+		go func(partFile string) {
+			defer wg.Done()
+			slog.Info("Encryption and upload started for part file", "partFile", partFile)
+			sha256Hash, encryptedFile, err := processPartFile(partFile, recipient)
+			if err != nil {
+				slog.Error("Failed to process part file", "partFile", partFile, "error", err)
+				errChan <- err
+				return
 			}
-		}
+			slog.Debug("Part file encrypted", "partFile", partFile, "encryptedFile", encryptedFile, "sha256", sha256Hash)
+
+			baseName := filepath.Base(partFile)
+			index := strings.TrimPrefix(baseName, "snapshot.part-")
+			partInfo := PartInfo{
+				Index:      index,
+				SHA256Hash: sha256Hash,
+			}
+			partInfoChan <- partInfo
+
+			// Upload to remote backend if configured
+			if backend != nil {
+				slog.Info("Uploading part file to remote backend", "encryptedFile", encryptedFile)
+				remotePath := filepath.Join("data", task.Pool, task.Dataset, taskDirName, filepath.Base(encryptedFile))
+				if err := backend.Upload(ctxBg, encryptedFile, remotePath, sha256Hash, backupType); err != nil {
+					slog.Error("Failed to upload part file", "encryptedFile", encryptedFile, "error", err)
+					errChan <- err
+					return
+				}
+			}
+		}(partFile)
+	}
+	wg.Wait()
+	close(partInfoChan)
+	close(errChan)
+
+	// Check for errors
+	if len(errChan) > 0 {
+		err := <-errChan
+		slog.Error("Error during processing", "error", err)
+		return fmt.Errorf("failed to process part files: %w", err)
+	}
+
+	// Collect partInfos
+	for pi := range partInfoChan {
+		partInfos = append(partInfos, pi)
 	}
 	slog.Info("All part files processed", "count", len(partInfos))
 
