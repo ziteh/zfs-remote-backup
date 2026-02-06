@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"os"
@@ -13,6 +14,7 @@ import (
 
 	"filippo.io/age"
 	"github.com/urfave/cli/v3"
+	"gopkg.in/yaml.v3"
 )
 
 func main() {
@@ -80,6 +82,33 @@ func main() {
 					dataset := cmd.String("dataset")
 					prefix := cmd.String("prefix")
 					return createSnapshot(pool, dataset, prefix)
+				},
+			},
+			{
+				Name:  "list",
+				Usage: "List available backups",
+				Flags: []cli.Flag{
+					&cli.StringFlag{
+						Name:  "config",
+						Usage: "path to configuration yaml file",
+						Value: "zrb_simple_config.yaml",
+					},
+					&cli.StringFlag{
+						Name:     "task",
+						Usage:    "Name of the backup task",
+						Required: true,
+					},
+					&cli.Int16Flag{
+						Name:  "level",
+						Usage: "Filter by backup level (-1 for all levels)",
+						Value: -1,
+					},
+				},
+				Action: func(ctx context.Context, cmd *cli.Command) error {
+					configPath := cmd.String("config")
+					taskName := cmd.String("task")
+					filterLevel := cmd.Int16("level")
+					return listBackups(ctx, configPath, taskName, filterLevel)
 				},
 			},
 		},
@@ -559,4 +588,156 @@ func runBackup(_ context.Context, configPath string, backupLevel int16, taskName
 
 	slog.Info("Backup completed successfully!")
 	return nil
+}
+
+// BackupInfo represents backup information for JSON output
+type BackupInfo struct {
+	Level           int16  `json:"level"`
+	Type            string `json:"type"`
+	Datetime        int64  `json:"datetime"`
+	DatetimeStr     string `json:"datetime_str"`
+	Snapshot        string `json:"snapshot"`
+	ParentSnapshot  string `json:"parent_snapshot,omitempty"`
+	ParentS3Path    string `json:"parent_s3_path,omitempty"`
+	Blake3Hash      string `json:"blake3_hash"`
+	PartsCount      int    `json:"parts_count"`
+	EstimatedSizeGB int    `json:"estimated_size_gb"`
+	S3Path          string `json:"s3_path"`
+	ManifestPath    string `json:"manifest_path,omitempty"`
+}
+
+// BackupListOutput represents the complete JSON output
+type BackupListOutput struct {
+	Task    string       `json:"task"`
+	Pool    string       `json:"pool"`
+	Dataset string       `json:"dataset"`
+	Source  string       `json:"source"`
+	Backups []BackupInfo `json:"backups"`
+	Summary struct {
+		TotalBackups         int `json:"total_backups"`
+		FullBackups          int `json:"full_backups"`
+		IncrementalBackups   int `json:"incremental_backups"`
+		TotalEstimatedSizeGB int `json:"total_estimated_size_gb"`
+	} `json:"summary"`
+}
+
+func listBackups(_ context.Context, configPath, taskName string, filterLevel int16) error {
+	config, err := loadConfig(configPath)
+	if err != nil {
+		return fmt.Errorf("failed to load config: %w", err)
+	}
+
+	// Find the specified task
+	var task *BackupTask
+	for _, t := range config.Tasks {
+		if t.Name == taskName {
+			task = &t
+			break
+		}
+	}
+	if task == nil {
+		return fmt.Errorf("task not found: %s", taskName)
+	}
+
+	// Read last backup manifest from local
+	lastPath := filepath.Join(config.BaseDir, "run", task.Pool, task.Dataset, "last_backup_manifest.yaml")
+	lastBackup, err := readLastBackupManifest(lastPath)
+	if err != nil {
+		return fmt.Errorf("failed to read backup manifest from %s: %w", lastPath, err)
+	}
+
+	// Build output
+	output := BackupListOutput{
+		Task:    taskName,
+		Pool:    task.Pool,
+		Dataset: task.Dataset,
+		Source:  "local",
+		Backups: []BackupInfo{},
+	}
+
+	for level, ref := range lastBackup.BackupLevels {
+		if ref == nil {
+			continue
+		}
+
+		if filterLevel >= 0 && int16(level) != filterLevel {
+			continue
+		}
+
+		backupType := "full"
+		if level > 0 {
+			backupType = "incremental"
+		}
+
+		estimatedSizeGB := len(ref.Blake3Hash) // This is a placeholder
+		// Try to get actual part count from manifest if available
+		if ref.Manifest != "" {
+			if manifest, err := readManifest(ref.Manifest); err == nil {
+				estimatedSizeGB = len(manifest.Parts) * 3
+			}
+		}
+
+		info := BackupInfo{
+			Level:           int16(level),
+			Type:            backupType,
+			Datetime:        ref.Datetime,
+			DatetimeStr:     time.Unix(ref.Datetime, 0).Format("2006-01-02 15:04:05"),
+			Snapshot:        ref.Snapshot,
+			ParentSnapshot:  "",
+			ParentS3Path:    "",
+			Blake3Hash:      ref.Blake3Hash,
+			PartsCount:      0,
+			EstimatedSizeGB: estimatedSizeGB,
+			S3Path:          ref.S3Path,
+			ManifestPath:    ref.Manifest,
+		}
+
+		// Get parent info if applicable
+		if level > 0 && len(lastBackup.BackupLevels) > level-1 && lastBackup.BackupLevels[level-1] != nil {
+			parentRef := lastBackup.BackupLevels[level-1]
+			info.ParentSnapshot = parentRef.Snapshot
+			info.ParentS3Path = parentRef.S3Path
+		}
+
+		// Get actual part count from manifest
+		if ref.Manifest != "" {
+			if manifest, err := readManifest(ref.Manifest); err == nil {
+				info.PartsCount = len(manifest.Parts)
+			}
+		}
+
+		output.Backups = append(output.Backups, info)
+	}
+
+	// Calculate summary
+	output.Summary.TotalBackups = len(output.Backups)
+	for _, backup := range output.Backups {
+		if backup.Type == "full" {
+			output.Summary.FullBackups++
+		} else {
+			output.Summary.IncrementalBackups++
+		}
+		output.Summary.TotalEstimatedSizeGB += backup.EstimatedSizeGB
+	}
+
+	// Output as JSON
+	encoder := json.NewEncoder(os.Stdout)
+	encoder.SetIndent("", "  ")
+	if err := encoder.Encode(output); err != nil {
+		return fmt.Errorf("failed to encode JSON: %w", err)
+	}
+
+	return nil
+}
+
+func readManifest(filename string) (*BackupManifest, error) {
+	data, err := os.ReadFile(filename)
+	if err != nil {
+		return nil, err
+	}
+	var manifest BackupManifest
+	if err := yaml.Unmarshal(data, &manifest); err != nil {
+		return nil, err
+	}
+	return &manifest, nil
 }
