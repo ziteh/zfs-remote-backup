@@ -103,12 +103,18 @@ func main() {
 						Usage: "Filter by backup level (-1 for all levels)",
 						Value: -1,
 					},
+					&cli.StringFlag{
+						Name:  "source",
+						Usage: "Data source: local or s3",
+						Value: "local",
+					},
 				},
 				Action: func(ctx context.Context, cmd *cli.Command) error {
 					configPath := cmd.String("config")
 					taskName := cmd.String("task")
 					filterLevel := cmd.Int16("level")
-					return listBackups(ctx, configPath, taskName, filterLevel)
+					source := cmd.String("source")
+					return listBackups(ctx, configPath, taskName, filterLevel, source)
 				},
 			},
 		},
@@ -621,7 +627,7 @@ type BackupListOutput struct {
 	} `json:"summary"`
 }
 
-func listBackups(_ context.Context, configPath, taskName string, filterLevel int16) error {
+func listBackups(ctx context.Context, configPath, taskName string, filterLevel int16, source string) error {
 	config, err := loadConfig(configPath)
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
@@ -639,9 +645,49 @@ func listBackups(_ context.Context, configPath, taskName string, filterLevel int
 		return fmt.Errorf("task not found: %s", taskName)
 	}
 
-	// Read last backup manifest from local
-	lastPath := filepath.Join(config.BaseDir, "run", task.Pool, task.Dataset, "last_backup_manifest.yaml")
-	lastBackup, err := readLastBackupManifest(lastPath)
+	// Read last backup manifest based on source
+	var lastBackup *LastBackup
+	var lastPath string
+
+	if source == "s3" {
+		// Read from S3
+		if !config.S3.Enabled {
+			return fmt.Errorf("S3 is not enabled in config")
+		}
+
+		// Check if manifest storage class not immediately accessible
+		manifestStorageClass := string(config.S3.StorageClass.Manifest)
+		if manifestStorageClass == "GLACIER" || manifestStorageClass == "DEEP_ARCHIVE" {
+			return fmt.Errorf("cannot list from S3: manifest storage class is %s (not immediately accessible)\n", manifestStorageClass)
+		}
+
+		maxRetryAttempts := 3
+		if config.S3.Retry.MaxAttempts > 0 {
+			maxRetryAttempts = config.S3.Retry.MaxAttempts
+		}
+
+		backend, err := NewS3Backend(ctx, config.S3.Bucket, config.S3.Region,
+			config.S3.Prefix, config.S3.Endpoint,
+			config.S3.StorageClass.Manifest, maxRetryAttempts)
+		if err != nil {
+			return fmt.Errorf("failed to initialize S3 backend: %w", err)
+		}
+
+		// Download last_backup_manifest.yaml to temp file
+		remotePath := filepath.Join("manifests", task.Pool, task.Dataset, "last_backup_manifest.yaml")
+		lastPath = filepath.Join(os.TempDir(), fmt.Sprintf("last_backup_manifest_%s.yaml", taskName))
+
+		slog.Info("Downloading manifest from S3", "remote", remotePath, "local", lastPath)
+		if err := backend.Download(ctx, remotePath, lastPath); err != nil {
+			return fmt.Errorf("failed to download manifest from S3: %w", err)
+		}
+		defer os.Remove(lastPath) // Clean up temp file
+	} else {
+		// Read from local
+		lastPath = filepath.Join(config.BaseDir, "run", task.Pool, task.Dataset, "last_backup_manifest.yaml")
+	}
+
+	lastBackup, err = readLastBackupManifest(lastPath)
 	if err != nil {
 		return fmt.Errorf("failed to read backup manifest from %s: %w", lastPath, err)
 	}
@@ -651,7 +697,7 @@ func listBackups(_ context.Context, configPath, taskName string, filterLevel int
 		Task:    taskName,
 		Pool:    task.Pool,
 		Dataset: task.Dataset,
-		Source:  "local",
+		Source:  source,
 		Backups: []BackupInfo{},
 	}
 

@@ -93,6 +93,31 @@ func NewS3Backend(ctx context.Context, bucket, region, prefix, endpoint string, 
 	}, nil
 }
 
+// Download downloads a file from S3 to local path
+func (s *S3Backend) Download(ctx context.Context, remotePath, localPath string) error {
+	key := filepath.ToSlash(filepath.Join(s.prefix, remotePath))
+
+	// Create output file
+	file, err := os.Create(localPath)
+	if err != nil {
+		return fmt.Errorf("failed to create local file: %w", err)
+	}
+	defer file.Close()
+
+	// Download from S3
+	downloader := manager.NewDownloader(s.client)
+	numBytes, err := downloader.Download(ctx, file, &s3.GetObjectInput{
+		Bucket: aws.String(s.bucket),
+		Key:    aws.String(key),
+	})
+	if err != nil {
+		return fmt.Errorf("failed to download from S3: %w", err)
+	}
+
+	slog.Info("Downloaded from S3", "bucket", s.bucket, "key", key, "bytes", numBytes)
+	return nil
+}
+
 func (s *S3Backend) Upload(ctx context.Context, localPath, remotePath, sha256Hash string, backupLevel int16) error {
 	var levelTag string
 	if backupLevel < 0 {
