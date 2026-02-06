@@ -9,6 +9,8 @@ s3:
   storage_class: # Options: STANDARD, INTELLIGENT_TIERING, STANDARD_IA, ONEZONE_IA, GLACIER, DEEP_ARCHIVE, GLACIER_IR
     manifest: STANDARD
     backup_data: [DEEP_ARCHIVE, DEEP_ARCHIVE, GLACIER, GLACIER_IR]
+  retry:
+    max_attempts: 5
 tasks:
   - name: daily_backup
     description: Daily backup task

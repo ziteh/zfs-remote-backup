@@ -32,6 +32,9 @@ type S3Config struct {
 		BackupData []types.StorageClass `yaml:"backup_data"` // By level
 		Manifest   types.StorageClass   `yaml:"manifest"`
 	} `yaml:"storage_class"`
+	Retry struct {
+		MaxAttempts int `yaml:"max_attempts"` // Maximum number of attempts (including initial request)
+	} `yaml:"retry,omitempty"`
 }
 
 type PartInfo struct {

@@ -320,8 +320,14 @@ func runBackup(_ context.Context, configPath string, backupLevel int16, taskName
 	var manifestBackend RemoteBackend = nil
 	ctxBg := context.Background()
 	if config.S3.Enabled {
+		// Get retry configuration (default to 3 if not specified)
+		maxRetryAttempts := 3
+		if config.S3.Retry.MaxAttempts > 0 {
+			maxRetryAttempts = config.S3.Retry.MaxAttempts
+		}
+
 		storageClass := config.S3.StorageClass.BackupData[backupLevel]
-		s3Backend, err := NewS3Backend(ctxBg, config.S3.Bucket, config.S3.Region, config.S3.Prefix, config.S3.Endpoint, storageClass)
+		s3Backend, err := NewS3Backend(ctxBg, config.S3.Bucket, config.S3.Region, config.S3.Prefix, config.S3.Endpoint, storageClass, maxRetryAttempts)
 		if err != nil {
 			slog.Error("Failed to initialize S3 backend", "error", err)
 			os.Exit(1)
@@ -329,7 +335,7 @@ func runBackup(_ context.Context, configPath string, backupLevel int16, taskName
 		backend = s3Backend
 		slog.Info("S3 backend initialized", "bucket", config.S3.Bucket, "region", config.S3.Region, "prefix", config.S3.Prefix)
 
-		manifestBackend, err = NewS3Backend(ctxBg, config.S3.Bucket, config.S3.Region, config.S3.Prefix, config.S3.Endpoint, config.S3.StorageClass.Manifest)
+		manifestBackend, err = NewS3Backend(ctxBg, config.S3.Bucket, config.S3.Region, config.S3.Prefix, config.S3.Endpoint, config.S3.StorageClass.Manifest, maxRetryAttempts)
 		if err != nil {
 			slog.Error("Failed to initialize S3 backend for manifests", "error", err)
 			os.Exit(1)

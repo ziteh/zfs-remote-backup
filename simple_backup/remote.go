@@ -31,8 +31,20 @@ type S3Backend struct {
 }
 
 // NewS3Backend creates a new S3 backend
-func NewS3Backend(ctx context.Context, bucket, region, prefix, endpoint string, storageClass types.StorageClass) (*S3Backend, error) {
-	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region))
+func NewS3Backend(ctx context.Context, bucket, region, prefix, endpoint string, storageClass types.StorageClass, maxRetryAttempts int) (*S3Backend, error) {
+	var configOpts []func(*config.LoadOptions) error
+	configOpts = append(configOpts, config.WithRegion(region))
+
+	// Apply retry configuration if specified
+	if maxRetryAttempts > 0 {
+		configOpts = append(configOpts,
+			config.WithRetryMaxAttempts(maxRetryAttempts),
+			config.WithRetryMode(aws.RetryModeStandard),
+		)
+		slog.Info("Configured S3 retry strategy", "mode", "standard", "maxAttempts", maxRetryAttempts)
+	}
+
+	cfg, err := config.LoadDefaultConfig(ctx, configOpts...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load AWS config: %w", err)
 	}
