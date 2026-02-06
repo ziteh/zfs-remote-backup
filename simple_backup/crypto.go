@@ -82,3 +82,53 @@ func calculateSHA256(filename string) (string, error) {
 
 	return fmt.Sprintf("%x", hasher.Sum(nil)), nil
 }
+
+// decryptWithAge decrypts a file using age decryption
+func decryptWithAge(inputFile, outputFile string, identity age.Identity) error {
+	in, err := os.Open(inputFile)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+
+	out, err := os.Create(outputFile)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+
+	r, err := age.Decrypt(in, identity)
+	if err != nil {
+		return err
+	}
+
+	if _, err := io.Copy(out, r); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// decryptPartAndVerify decrypts an encrypted part file and verifies its SHA256
+func decryptPartAndVerify(encryptedFile, outputFile, expectedSHA256 string, identity age.Identity) error {
+	slog.Info("Decrypting part file", "encryptedFile", encryptedFile)
+
+	// Verify SHA256 before decryption
+	actualSHA256, err := calculateSHA256(encryptedFile)
+	if err != nil {
+		return fmt.Errorf("failed to calculate SHA256: %w", err)
+	}
+
+	if actualSHA256 != expectedSHA256 {
+		return fmt.Errorf("SHA256 mismatch: expected %s, got %s", expectedSHA256, actualSHA256)
+	}
+	slog.Info("SHA256 verified", "hash", actualSHA256)
+
+	// Decrypt
+	if err := decryptWithAge(encryptedFile, outputFile, identity); err != nil {
+		return fmt.Errorf("decryption failed: %w", err)
+	}
+	slog.Info("Decrypted to", "outputFile", outputFile)
+
+	return nil
+}

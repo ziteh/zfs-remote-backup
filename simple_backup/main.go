@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -115,6 +117,52 @@ func main() {
 					filterLevel := cmd.Int16("level")
 					source := cmd.String("source")
 					return listBackups(ctx, configPath, taskName, filterLevel, source)
+				},
+			},
+			{
+				Name:  "restore",
+				Usage: "Restore backup from S3 or local",
+				Flags: []cli.Flag{
+					&cli.StringFlag{
+						Name:  "config",
+						Usage: "path to configuration yaml file",
+						Value: "zrb_simple_config.yaml",
+					},
+					&cli.StringFlag{
+						Name:     "task",
+						Usage:    "Name of the backup task",
+						Required: true,
+					},
+					&cli.Int16Flag{
+						Name:     "level",
+						Usage:    "Backup level to restore",
+						Required: true,
+					},
+					&cli.StringFlag{
+						Name:     "target",
+						Usage:    "Target pool/dataset (e.g., newpool/restored_data)",
+						Required: true,
+					},
+					&cli.StringFlag{
+						Name:     "private-key",
+						Usage:    "Path to age private key file",
+						Required: true,
+					},
+					&cli.StringFlag{
+						Name:  "source",
+						Usage: "Data source: local or s3",
+						Value: "s3",
+					},
+					&cli.BoolFlag{
+						Name:  "dry-run",
+						Usage: "Show what would be restored without actually restoring",
+						Value: false,
+					},
+				},
+				Action: func(ctx context.Context, cmd *cli.Command) error {
+					return restoreBackup(ctx, cmd.String("config"), cmd.String("task"),
+						cmd.Int16("level"), cmd.String("target"), cmd.String("private-key"),
+						cmd.String("source"), cmd.Bool("dry-run"))
 				},
 			},
 		},
@@ -786,4 +834,313 @@ func readManifest(filename string) (*BackupManifest, error) {
 		return nil, err
 	}
 	return &manifest, nil
+}
+
+func restoreBackup(ctx context.Context, configPath, taskName string, level int16, target, privateKeyPath, source string, dryRun bool) error {
+	slog.Info("Restore started", "task", taskName, "level", level, "target", target, "source", source, "dryRun", dryRun)
+
+	config, err := loadConfig(configPath)
+	if err != nil {
+		return fmt.Errorf("failed to load config: %w", err)
+	}
+
+	// Find the specified task
+	var task *BackupTask
+	for _, t := range config.Tasks {
+		if t.Name == taskName {
+			task = &t
+			break
+		}
+	}
+	if task == nil {
+		return fmt.Errorf("task not found: %s", taskName)
+	}
+
+	// Validate target format (should be pool/dataset)
+	targetParts := strings.Split(target, "/")
+	if len(targetParts) < 2 {
+		return fmt.Errorf("target must be in format pool/dataset, got: %s", target)
+	}
+
+	// Load age private key
+	privateKeyData, err := os.ReadFile(privateKeyPath)
+	if err != nil {
+		return fmt.Errorf("failed to read private key: %w", err)
+	}
+	identity, err := age.ParseX25519Identity(strings.TrimSpace(string(privateKeyData)))
+	if err != nil {
+		return fmt.Errorf("failed to parse private key: %w", err)
+	}
+	slog.Info("Private key loaded successfully")
+
+	// Load manifest
+	var manifest *BackupManifest
+	var manifestPath string
+
+	if source == "s3" {
+		if !config.S3.Enabled {
+			return fmt.Errorf("S3 is not enabled in config")
+		}
+
+		// Check storage class accessibility
+		var storageClass string
+		if level >= 0 && int(level) < len(config.S3.StorageClass.BackupData) {
+			storageClass = string(config.S3.StorageClass.BackupData[level])
+		} else {
+			return fmt.Errorf("invalid backup level %d for configured storage classes", level)
+		}
+
+		if storageClass == "GLACIER" || storageClass == "DEEP_ARCHIVE" {
+			return fmt.Errorf("cannot restore from S3: backup data storage class is %s (not immediately accessible)\n"+
+				"You need to:\n"+
+				"1. Initiate a restore request in AWS S3 console or via AWS CLI\n"+
+				"2. Wait for the restore to complete (12-48 hours for DEEP_ARCHIVE)\n"+
+				"3. Then retry this restore command", storageClass)
+		}
+
+		// Get manifest storage class
+		manifestStorageClass := string(config.S3.StorageClass.Manifest)
+		if manifestStorageClass == "GLACIER" || manifestStorageClass == "DEEP_ARCHIVE" {
+			return fmt.Errorf("cannot restore from S3: manifest storage class is %s (not immediately accessible)", manifestStorageClass)
+		}
+
+		maxRetryAttempts := 3
+		if config.S3.Retry.MaxAttempts > 0 {
+			maxRetryAttempts = config.S3.Retry.MaxAttempts
+		}
+
+		backend, err := NewS3Backend(ctx, config.S3.Bucket, config.S3.Region,
+			config.S3.Prefix, config.S3.Endpoint,
+			config.S3.StorageClass.Manifest, maxRetryAttempts)
+		if err != nil {
+			return fmt.Errorf("failed to initialize S3 backend: %w", err)
+		}
+
+		// First, download the last_backup_manifest to find the specific backup
+		lastManifestPath := filepath.Join(os.TempDir(), fmt.Sprintf("restore_last_manifest_%s.yaml", taskName))
+		defer os.Remove(lastManifestPath)
+
+		remoteLastPath := filepath.Join("manifests", task.Pool, task.Dataset, "last_backup_manifest.yaml")
+		slog.Info("Downloading last backup manifest from S3", "remote", remoteLastPath)
+		if err := backend.Download(ctx, remoteLastPath, lastManifestPath); err != nil {
+			return fmt.Errorf("failed to download last backup manifest: %w", err)
+		}
+
+		lastBackup, err := readLastBackupManifest(lastManifestPath)
+		if err != nil {
+			return fmt.Errorf("failed to read last backup manifest: %w", err)
+		}
+
+		if int(level) >= len(lastBackup.BackupLevels) || lastBackup.BackupLevels[level] == nil {
+			return fmt.Errorf("backup level %d not found", level)
+		}
+
+		backupRef := lastBackup.BackupLevels[level]
+		s3Path := backupRef.S3Path
+
+		// Download the task manifest
+		manifestPath = filepath.Join(os.TempDir(), fmt.Sprintf("restore_manifest_%s_level%d.yaml", taskName, level))
+		defer os.Remove(manifestPath)
+
+		remoteManifestPath := filepath.Join("manifests", s3Path, "task_manifest.yaml")
+		slog.Info("Downloading task manifest from S3", "remote", remoteManifestPath)
+		if err := backend.Download(ctx, remoteManifestPath, manifestPath); err != nil {
+			return fmt.Errorf("failed to download task manifest: %w", err)
+		}
+	} else {
+		// Read from local
+		lastPath := filepath.Join(config.BaseDir, "run", task.Pool, task.Dataset, "last_backup_manifest.yaml")
+		lastBackup, err := readLastBackupManifest(lastPath)
+		if err != nil {
+			return fmt.Errorf("failed to read last backup manifest: %w", err)
+		}
+
+		if int(level) >= len(lastBackup.BackupLevels) || lastBackup.BackupLevels[level] == nil {
+			return fmt.Errorf("backup level %d not found", level)
+		}
+
+		backupRef := lastBackup.BackupLevels[level]
+		manifestPath = backupRef.Manifest
+	}
+
+	manifest, err = readManifest(manifestPath)
+	if err != nil {
+		return fmt.Errorf("failed to read manifest: %w", err)
+	}
+
+	slog.Info("Manifest loaded", "snapshot", manifest.TargetSnapshot, "parts", len(manifest.Parts), "blake3", manifest.Blake3Hash)
+
+	// Dry run mode
+	if dryRun {
+		fmt.Printf("\n=== DRY RUN MODE ===\n")
+		fmt.Printf("Would restore backup:\n")
+		fmt.Printf("  Task:            %s\n", taskName)
+		fmt.Printf("  Pool/Dataset:    %s/%s\n", manifest.Pool, manifest.Dataset)
+		fmt.Printf("  Target:          %s\n", target)
+		fmt.Printf("  Backup Level:    %d\n", manifest.BackupLevel)
+		fmt.Printf("  Snapshot:        %s\n", manifest.TargetSnapshot)
+		if manifest.ParentSnapshot != "" {
+			fmt.Printf("  Parent Snapshot: %s\n", manifest.ParentSnapshot)
+		}
+		fmt.Printf("  Parts:           %d\n", len(manifest.Parts))
+		fmt.Printf("  BLAKE3 Hash:     %s\n", manifest.Blake3Hash)
+		fmt.Printf("  Source:          %s\n", source)
+		fmt.Printf("\nNo changes made.\n")
+		return nil
+	}
+
+	// Create temp directory for restore operations
+	tempDir := filepath.Join(os.TempDir(), fmt.Sprintf("zrb_restore_%s_%d_%d", taskName, level, time.Now().Unix()))
+	if err := os.MkdirAll(tempDir, 0755); err != nil {
+		return fmt.Errorf("failed to create temp directory: %w", err)
+	}
+	defer func() {
+		slog.Info("Cleaning up temp directory", "path", tempDir)
+		if err := os.RemoveAll(tempDir); err != nil {
+			slog.Warn("Failed to remove temp directory", "error", err)
+		}
+	}()
+
+	slog.Info("Created temp directory", "path", tempDir)
+
+	// Download and decrypt parts
+	slog.Info("Processing parts", "count", len(manifest.Parts))
+	decryptedParts := make([]string, len(manifest.Parts))
+
+	for i, partInfo := range manifest.Parts {
+		encryptedFile := filepath.Join(tempDir, fmt.Sprintf("snapshot.part-%s.age", partInfo.Index))
+		decryptedFile := filepath.Join(tempDir, fmt.Sprintf("snapshot.part-%s", partInfo.Index))
+
+		if source == "s3" {
+			// Download from S3
+			maxRetryAttempts := 3
+			if config.S3.Retry.MaxAttempts > 0 {
+				maxRetryAttempts = config.S3.Retry.MaxAttempts
+			}
+
+			storageClass := config.S3.StorageClass.BackupData[level]
+			backend, err := NewS3Backend(ctx, config.S3.Bucket, config.S3.Region,
+				config.S3.Prefix, config.S3.Endpoint, storageClass, maxRetryAttempts)
+			if err != nil {
+				return fmt.Errorf("failed to initialize S3 backend: %w", err)
+			}
+
+			remotePath := filepath.Join("data", manifest.TargetS3Path, fmt.Sprintf("snapshot.part-%s.age", partInfo.Index))
+			slog.Info("Downloading part from S3", "part", partInfo.Index, "remote", remotePath)
+			if err := backend.Download(ctx, remotePath, encryptedFile); err != nil {
+				return fmt.Errorf("failed to download part %s: %w", partInfo.Index, err)
+			}
+		} else {
+			// Copy from local
+			localEncrypted := filepath.Join(config.BaseDir, "task", manifest.Pool, manifest.Dataset,
+				fmt.Sprintf("level%d", manifest.BackupLevel), time.Unix(manifest.Datetime, 0).Format("20060102"),
+				fmt.Sprintf("snapshot.part-%s.age", partInfo.Index))
+
+			slog.Info("Copying part from local", "part", partInfo.Index, "path", localEncrypted)
+			if err := copyFile(localEncrypted, encryptedFile); err != nil {
+				return fmt.Errorf("failed to copy part %s: %w", partInfo.Index, err)
+			}
+		}
+
+		// Decrypt and verify
+		slog.Info("Decrypting and verifying part", "part", partInfo.Index)
+		if err := decryptPartAndVerify(encryptedFile, decryptedFile, partInfo.SHA256Hash, identity); err != nil {
+			return fmt.Errorf("failed to decrypt/verify part %s: %w", partInfo.Index, err)
+		}
+
+		decryptedParts[i] = decryptedFile
+	}
+
+	// Merge parts into single file
+	mergedFile := filepath.Join(tempDir, "snapshot.merged")
+	slog.Info("Merging parts", "output", mergedFile)
+	if err := mergeParts(decryptedParts, mergedFile); err != nil {
+		return fmt.Errorf("failed to merge parts: %w", err)
+	}
+
+	// Verify BLAKE3
+	slog.Info("Verifying BLAKE3 hash")
+	actualBlake3, err := calculateBLAKE3(mergedFile)
+	if err != nil {
+		return fmt.Errorf("failed to calculate BLAKE3: %w", err)
+	}
+	if actualBlake3 != manifest.Blake3Hash {
+		return fmt.Errorf("BLAKE3 mismatch: expected %s, got %s", manifest.Blake3Hash, actualBlake3)
+	}
+	slog.Info("BLAKE3 verified", "hash", actualBlake3)
+
+	// Execute ZFS receive
+	slog.Info("Executing ZFS receive", "target", target)
+	if err := executeZfsReceive(mergedFile, target); err != nil {
+		return fmt.Errorf("ZFS receive failed: %w", err)
+	}
+
+	slog.Info("Restore completed successfully!")
+	return nil
+}
+
+// copyFile copies a file from src to dst
+func copyFile(src, dst string) error {
+	srcFile, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer srcFile.Close()
+
+	dstFile, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	defer dstFile.Close()
+
+	if _, err := io.Copy(dstFile, srcFile); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// mergeParts merges multiple part files into a single output file
+func mergeParts(parts []string, outputFile string) error {
+	out, err := os.Create(outputFile)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+
+	for _, partFile := range parts {
+		part, err := os.Open(partFile)
+		if err != nil {
+			return fmt.Errorf("failed to open part %s: %w", partFile, err)
+		}
+
+		if _, err := io.Copy(out, part); err != nil {
+			part.Close()
+			return fmt.Errorf("failed to copy part %s: %w", partFile, err)
+		}
+		part.Close()
+	}
+
+	return nil
+}
+
+// executeZfsReceive executes zfs receive command
+func executeZfsReceive(snapshotFile, target string) error {
+	file, err := os.Open(snapshotFile)
+	if err != nil {
+		return fmt.Errorf("failed to open snapshot file: %w", err)
+	}
+	defer file.Close()
+
+	cmd := exec.Command("zfs", "receive", "-F", target)
+	cmd.Stdin = file
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	slog.Info("Running zfs receive", "target", target)
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("zfs receive command failed: %w", err)
+	}
+
+	return nil
 }
