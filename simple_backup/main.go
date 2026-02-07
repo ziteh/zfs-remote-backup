@@ -8,10 +8,12 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"filippo.io/age"
@@ -23,7 +25,7 @@ func main() {
 	cmd := &cli.Command{
 		Name:    "zrb_simple",
 		Usage:   "ZFS Remote Backup",
-		Version: "0.1.0-alpha.1",
+		Version: "0.1.0",
 		Commands: []*cli.Command{
 			{
 				Name:  "genkey",
@@ -168,7 +170,17 @@ func main() {
 		},
 	}
 
-	if err := cmd.Run(context.Background(), os.Args); err != nil {
+	// Set up signal handling for graceful shutdown
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	// Run the CLI with cancellable context
+	if err := cmd.Run(ctx, os.Args); err != nil {
+		// Check if error is due to context cancellation (user interrupt)
+		if ctx.Err() == context.Canceled {
+			fmt.Fprintln(os.Stderr, "\n⚠ Backup interrupted by user")
+			os.Exit(130) // Standard exit code for SIGINT
+		}
 		slog.Error("CLI error", "error", err)
 		os.Exit(1)
 	}
@@ -194,12 +206,19 @@ func generateKey(_ context.Context) error {
 	return nil
 }
 
-func runBackup(_ context.Context, configPath string, backupLevel int16, taskName string) error {
+func runBackup(ctx context.Context, configPath string, backupLevel int16, taskName string) error {
 	if backupLevel < 0 {
 		return fmt.Errorf("backup level must be non-negative")
 	}
 	if taskName == "" {
 		return fmt.Errorf("task name must be specified")
+	}
+
+	// Check if context is already cancelled
+	select {
+	case <-ctx.Done():
+		return fmt.Errorf("backup cancelled before start: %w", ctx.Err())
+	default:
 	}
 
 	config, err := loadConfig(configPath)
@@ -347,6 +366,14 @@ func runBackup(_ context.Context, configPath string, backupLevel int16, taskName
 		parentSnapshot = state.ParentSnapshot
 	}
 
+	// Check context before starting ZFS send
+	select {
+	case <-ctx.Done():
+		slog.Warn("Backup cancelled before ZFS send")
+		return fmt.Errorf("backup cancelled: %w", ctx.Err())
+	default:
+	}
+
 	var blake3Hash string
 	if state == nil || state.Blake3Hash == "" {
 		// Run zfs send and split
@@ -401,7 +428,6 @@ func runBackup(_ context.Context, configPath string, backupLevel int16, taskName
 	// Initialize S3 backend if enabled
 	var backend RemoteBackend = nil
 	var manifestBackend RemoteBackend = nil
-	ctxBg := context.Background()
 	if config.S3.Enabled {
 		// Get retry configuration (default to 3 if not specified)
 		maxRetryAttempts := 3
@@ -410,7 +436,7 @@ func runBackup(_ context.Context, configPath string, backupLevel int16, taskName
 		}
 
 		storageClass := config.S3.StorageClass.BackupData[backupLevel]
-		s3Backend, err := NewS3Backend(ctxBg, config.S3.Bucket, config.S3.Region, config.S3.Prefix, config.S3.Endpoint, storageClass, maxRetryAttempts)
+		s3Backend, err := NewS3Backend(ctx, config.S3.Bucket, config.S3.Region, config.S3.Prefix, config.S3.Endpoint, storageClass, maxRetryAttempts)
 		if err != nil {
 			slog.Error("Failed to initialize S3 backend", "error", err)
 			os.Exit(1)
@@ -418,7 +444,7 @@ func runBackup(_ context.Context, configPath string, backupLevel int16, taskName
 		backend = s3Backend
 		slog.Info("S3 backend initialized", "bucket", config.S3.Bucket, "region", config.S3.Region, "prefix", config.S3.Prefix)
 
-		manifestBackend, err = NewS3Backend(ctxBg, config.S3.Bucket, config.S3.Region, config.S3.Prefix, config.S3.Endpoint, config.S3.StorageClass.Manifest, maxRetryAttempts)
+		manifestBackend, err = NewS3Backend(ctx, config.S3.Bucket, config.S3.Region, config.S3.Prefix, config.S3.Endpoint, config.S3.StorageClass.Manifest, maxRetryAttempts)
 		if err != nil {
 			slog.Error("Failed to initialize S3 backend for manifests", "error", err)
 			os.Exit(1)
@@ -440,6 +466,15 @@ func runBackup(_ context.Context, configPath string, backupLevel int16, taskName
 		go func() {
 			defer wg.Done()
 			for partFile := range taskChan {
+				// Check if context is cancelled
+				select {
+				case <-ctx.Done():
+					slog.Warn("Worker stopping due to context cancellation")
+					errChan <- ctx.Err()
+					return
+				default:
+				}
+
 				baseName := filepath.Base(partFile)
 				index := strings.TrimPrefix(baseName, "snapshot.part-")
 
@@ -473,11 +508,20 @@ func runBackup(_ context.Context, configPath string, backupLevel int16, taskName
 
 				// Upload to remote backend if configured
 				if backend != nil {
+					// Check context again before upload
+					select {
+					case <-ctx.Done():
+						slog.Warn("Worker stopping before upload due to context cancellation")
+						errChan <- ctx.Err()
+						return
+					default:
+					}
+
 					// Skip if already uploaded
 					if !state.PartsUploaded[index] {
 						slog.Info("Uploading part file to remote backend", "encryptedFile", encryptedFile)
 						remotePath := filepath.Join("data", task.Pool, task.Dataset, taskDirName, filepath.Base(encryptedFile))
-						if err := backend.Upload(ctxBg, encryptedFile, remotePath, sha256Hash, backupLevel); err != nil {
+						if err := backend.Upload(ctx, encryptedFile, remotePath, sha256Hash, backupLevel); err != nil {
 							slog.Error("Failed to upload part file", "encryptedFile", encryptedFile, "error", err)
 							errChan <- err
 							continue
@@ -569,7 +613,7 @@ func runBackup(_ context.Context, configPath string, backupLevel int16, taskName
 			os.Exit(1)
 		}
 		remotePath := filepath.Join("manifests", task.Pool, task.Dataset, taskDirName, "task_manifest.yaml")
-		if err := manifestBackend.Upload(ctxBg, manifestPath, remotePath, manifestSHA256, -1); err != nil {
+		if err := manifestBackend.Upload(ctx, manifestPath, remotePath, manifestSHA256, -1); err != nil {
 			slog.Error("Failed to upload manifest", "error", err)
 			os.Exit(1)
 		}
@@ -617,7 +661,7 @@ func runBackup(_ context.Context, configPath string, backupLevel int16, taskName
 	if manifestBackend != nil {
 		if lastSHA, err := calculateSHA256(lastPath); err == nil {
 			remoteLastPath := filepath.Join("manifests", task.Pool, task.Dataset, "last_backup_manifest.yaml")
-			if err := manifestBackend.Upload(ctxBg, lastPath, remoteLastPath, lastSHA, -1); err != nil {
+			if err := manifestBackend.Upload(ctx, lastPath, remoteLastPath, lastSHA, -1); err != nil {
 				slog.Warn("Failed to upload last backup manifest", "error", err)
 			} else {
 				slog.Info("Uploaded last backup manifest to remote", "remote", remoteLastPath)
