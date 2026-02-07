@@ -23,13 +23,14 @@ func runZfsSendAndSplit(targetSnapshot, parentSnapshot, exportDir string) (strin
 	defer cancel()
 
 	outputPattern := filepath.Join(exportDir, "snapshot.part-")
-	outputPatternTmp := filepath.Join(exportDir, "snapshot.part-.tmp")
+	outputPatternTmp := filepath.Join(exportDir, "snapshot.part-")
 
 	// Cleanup function in case of failure
 	success := false
 	defer func() {
 		if !success {
-			matches, _ := filepath.Glob(outputPatternTmp + "*")
+			// Clean up temporary files with .tmp suffix
+			matches, _ := filepath.Glob(outputPatternTmp + "*.tmp")
 			for _, f := range matches {
 				if err := os.Remove(f); err != nil {
 					slog.Warn("Failed to clean up", "file", f, "error", err)
@@ -50,8 +51,8 @@ func runZfsSendAndSplit(targetSnapshot, parentSnapshot, exportDir string) (strin
 	zfsCmd := exec.CommandContext(ctx, "zfs", args...)
 	zfsCmd.Stderr = os.Stderr
 
-	// Prepare split command
-	splitCmd := exec.CommandContext(ctx, "split", "-b", "3G", "-a", "6", "-", outputPatternTmp)
+	// Prepare split command with .tmp suffix for temporary files
+	splitCmd := exec.CommandContext(ctx, "split", "-b", "3G", "-a", "6", "--additional-suffix=.tmp", "-", outputPatternTmp)
 	splitCmd.Stderr = os.Stderr
 
 	// Hold zfs snapshot to prevent deletion during send
@@ -139,8 +140,8 @@ func runZfsSendAndSplit(targetSnapshot, parentSnapshot, exportDir string) (strin
 		return "", fmt.Errorf("pipeline failed: %v", errs)
 	}
 
-	// Rename .tmp files to final names
-	matches, err := filepath.Glob(outputPatternTmp + "*")
+	// Rename .tmp files to final names (snapshot.part-aaaaaa.tmp -> snapshot.part-aaaaaa)
+	matches, err := filepath.Glob(outputPatternTmp + "*.tmp")
 	if err != nil {
 		slog.Error("Failed to glob tmp files", "error", err)
 		return "", fmt.Errorf("failed to glob tmp files: %w", err)
