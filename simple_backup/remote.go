@@ -18,6 +18,7 @@ import (
 // RemoteBackend defines the interface for remote storage
 type RemoteBackend interface {
 	Upload(ctx context.Context, localPath, remotePath, sha256Hash string, backupLevel int16) error
+	VerifyCredentials(ctx context.Context) error
 }
 
 // S3Backend implements RemoteBackend for AWS S3
@@ -152,5 +153,21 @@ func (s *S3Backend) Upload(ctx context.Context, localPath, remotePath, sha256Has
 	}
 
 	slog.Info("Uploaded to S3", "bucket", s.bucket, "key", key, "storageClass", s.storageClass)
+	return nil
+}
+
+// VerifyCredentials verifies that AWS credentials are valid and bucket is accessible
+func (s *S3Backend) VerifyCredentials(ctx context.Context) error {
+	slog.Info("Verifying AWS credentials and bucket access", "bucket", s.bucket)
+
+	// Try to head the bucket to verify credentials and bucket access
+	_, err := s.client.HeadBucket(ctx, &s3.HeadBucketInput{
+		Bucket: aws.String(s.bucket),
+	})
+	if err != nil {
+		return fmt.Errorf("failed to verify AWS credentials or bucket access: %w", err)
+	}
+
+	slog.Info("AWS credentials verified successfully", "bucket", s.bucket)
 	return nil
 }

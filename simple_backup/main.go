@@ -444,6 +444,12 @@ func runBackup(ctx context.Context, configPath string, backupLevel int16, taskNa
 		backend = s3Backend
 		slog.Info("S3 backend initialized", "bucket", config.S3.Bucket, "region", config.S3.Region, "prefix", config.S3.Prefix)
 
+		// Verify AWS credentials before proceeding
+		if err := backend.VerifyCredentials(ctx); err != nil {
+			slog.Error("AWS credentials verification failed", "error", err)
+			os.Exit(1)
+		}
+
 		manifestBackend, err = NewS3Backend(ctx, config.S3.Bucket, config.S3.Region, config.S3.Prefix, config.S3.Endpoint, config.S3.StorageClass.Manifest, maxRetryAttempts)
 		if err != nil {
 			slog.Error("Failed to initialize S3 backend for manifests", "error", err)
@@ -765,6 +771,11 @@ func listBackups(ctx context.Context, configPath, taskName string, filterLevel i
 			return fmt.Errorf("failed to initialize S3 backend: %w", err)
 		}
 
+		// Verify AWS credentials before proceeding
+		if err := backend.VerifyCredentials(ctx); err != nil {
+			return fmt.Errorf("AWS credentials verification failed: %w", err)
+		}
+
 		// Download last_backup_manifest.yaml to temp file
 		remotePath := filepath.Join("manifests", task.Pool, task.Dataset, "last_backup_manifest.yaml")
 		lastPath = filepath.Join(os.TempDir(), fmt.Sprintf("last_backup_manifest_%s.yaml", taskName))
@@ -958,6 +969,11 @@ func restoreBackup(ctx context.Context, configPath, taskName string, level int16
 			config.S3.StorageClass.Manifest, maxRetryAttempts)
 		if err != nil {
 			return fmt.Errorf("failed to initialize S3 backend: %w", err)
+		}
+
+		// Verify AWS credentials before proceeding
+		if err := backend.VerifyCredentials(ctx); err != nil {
+			return fmt.Errorf("AWS credentials verification failed: %w", err)
 		}
 
 		// First, download the last_backup_manifest to find the specific backup
