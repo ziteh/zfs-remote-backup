@@ -1,3 +1,5 @@
+# yaml-language-server: $schema=./zrb-config-schema.json
+
 base_dir: /mnt/p1/ds1/bk/
 age_public_key: age1ed9kad8ddqpjnt7k50tmxu8ngxte5ghmwsse7ckt6kdtvc7afpkqlj5ddk
 s3:
@@ -5,18 +7,16 @@ s3:
   bucket: my-backup-bucket
   region: us-east-1
   prefix: zfs-backups/
-  endpoint: "" # Leave empty for AWS S3, or specify custom endpoint for S3 compatible services
+  endpoint: ""
   storage_class:
-    # Manifest needs immediate access, should not use Glacier storage classes
-    manifest: STANDARD_IA  # Options: STANDARD, STANDARD_IA, INTELLIGENT_TIERING
-    # Backup data storage class per level (index 0 = level 0, index 1 = level 1, etc.)
-    # Options: STANDARD, INTELLIGENT_TIERING, STANDARD_IA, ONEZONE_IA, GLACIER_IR, GLACIER, DEEP_ARCHIVE
+    manifest: STANDARD
     backup_data:
-      - DEEP_ARCHIVE  # Level 0 (full backup)
-      - GLACIER       # Level 1 (differential)
-      - GLACIER_IR    # Level 2+ (incremental)
+      - DEEP_ARCHIVE # Level 0 (full backup)
+      - DEEP_ARCHIVE
+      - DEEP_ARCHIVE
+      - GLACIER
   retry:
-    max_attempts: 8  # Default 3 if not specified
+    max_attempts: 8
 tasks:
   - name: example_task
     description: Example backup task

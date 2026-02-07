@@ -1,0 +1,143 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "base_dir": {
+      "type": "string",
+      "description": "Base directory for backups"
+    },
+    "age_public_key": {
+      "type": "string",
+      "description": "Age public key for encryption"
+    },
+    "s3": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Enable S3 storage"
+        },
+        "bucket": {
+          "type": "string",
+          "description": "S3 bucket name"
+        },
+        "region": {
+          "type": "string",
+          "description": "AWS region"
+        },
+        "prefix": {
+          "type": "string",
+          "description": "S3 prefix for backups"
+        },
+        "endpoint": {
+          "type": "string",
+          "description": "Custom S3 endpoint (leave empty for AWS)"
+        },
+        "storage_class": {
+          "type": "object",
+          "properties": {
+            "manifest": {
+              "type": "string",
+              "enum": [
+                "STANDARD",
+                "REDUCED_REDUNDANCY",
+                "STANDARD_IA",
+                "ONEZONE_IA",
+                "INTELLIGENT_TIERING",
+                "GLACIER",
+                "DEEP_ARCHIVE",
+                "OUTPOSTS",
+                "GLACIER_IR",
+                "SNOW",
+                "EXPRESS_ONEZONE",
+                "FSX_OPENZFS"
+              ],
+              "description": "Storage class for manifest files"
+            },
+            "backup_data": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "STANDARD",
+                  "REDUCED_REDUNDANCY",
+                  "STANDARD_IA",
+                  "ONEZONE_IA",
+                  "INTELLIGENT_TIERING",
+                  "GLACIER",
+                  "DEEP_ARCHIVE",
+                  "OUTPOSTS",
+                  "GLACIER_IR",
+                  "SNOW",
+                  "EXPRESS_ONEZONE",
+                  "FSX_OPENZFS"
+                ]
+              },
+              "description": "Storage classes for backup data by level"
+            }
+          },
+          "required": [
+            "manifest",
+            "backup_data"
+          ]
+        },
+        "retry": {
+          "type": "object",
+          "properties": {
+            "max_attempts": {
+              "type": "integer",
+              "description": "Maximum retry attempts"
+            }
+          }
+        }
+      },
+      "required": [
+        "enabled",
+        "bucket",
+        "region",
+        "prefix",
+        "storage_class"
+      ]
+    },
+    "tasks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Task name"
+          },
+          "description": {
+            "type": "string",
+            "description": "Task description"
+          },
+          "pool": {
+            "type": "string",
+            "description": "ZFS pool name"
+          },
+          "dataset": {
+            "type": "string",
+            "description": "ZFS dataset name"
+          },
+          "enabled": {
+            "type": "boolean",
+            "description": "Enable this task"
+          }
+        },
+        "required": [
+          "name",
+          "pool",
+          "dataset",
+          "enabled"
+        ]
+      }
+    }
+  },
+  "required": [
+    "base_dir",
+    "age_public_key",
+    "s3",
+    "tasks"
+  ]
+}
