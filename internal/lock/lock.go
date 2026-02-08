@@ -1,4 +1,4 @@
-package main
+package lock
 
 import (
 	"fmt"
@@ -9,14 +9,14 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-type LockEntry struct {
+type Entry struct {
 	Pid       int    `yaml:"pid"`
 	Pool      string `yaml:"pool"`
 	Dataset   string `yaml:"dataset"`
 	StartedAt string `yaml:"started_at"`
 }
 
-func readLocks(path string) ([]LockEntry, error) {
+func readLocks(path string) ([]Entry, error) {
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		return nil, nil
 	}
@@ -24,14 +24,14 @@ func readLocks(path string) ([]LockEntry, error) {
 	if err != nil {
 		return nil, err
 	}
-	var locks []LockEntry
+	var locks []Entry
 	if err := yaml.Unmarshal(data, &locks); err != nil {
 		return nil, err
 	}
 	return locks, nil
 }
 
-func writeLocks(path string, locks []LockEntry) error {
+func writeLocks(path string, locks []Entry) error {
 	data, err := yaml.Marshal(locks)
 	if err != nil {
 		return err
@@ -58,9 +58,9 @@ func isProcessAlive(pid int) bool {
 	return true
 }
 
-// AcquireLock tries to register a lock for pool+dataset in the YAML lock file.
+// Acquire tries to register a lock for pool+dataset in the YAML lock file.
 // Returns a release function which should be called (deferred) when work is done.
-func AcquireLock(lockPath, pool, dataset string) (func() error, error) {
+func Acquire(lockPath, pool, dataset string) (func() error, error) {
 	pid := os.Getpid()
 
 	locks, err := readLocks(lockPath)
@@ -68,7 +68,7 @@ func AcquireLock(lockPath, pool, dataset string) (func() error, error) {
 		return nil, err
 	}
 
-	var kept []LockEntry
+	var kept []Entry
 	for _, l := range locks {
 		if l.Pool == pool && l.Dataset == dataset {
 			if isProcessAlive(l.Pid) {
@@ -81,7 +81,7 @@ func AcquireLock(lockPath, pool, dataset string) (func() error, error) {
 	}
 
 	// append our entry
-	kept = append(kept, LockEntry{
+	kept = append(kept, Entry{
 		Pid:       pid,
 		Pool:      pool,
 		Dataset:   dataset,
@@ -97,7 +97,7 @@ func AcquireLock(lockPath, pool, dataset string) (func() error, error) {
 		if err != nil {
 			return err
 		}
-		var rem []LockEntry
+		var rem []Entry
 		for _, l := range locks {
 			if l.Pid == pid && l.Pool == pool && l.Dataset == dataset {
 				continue
@@ -105,7 +105,6 @@ func AcquireLock(lockPath, pool, dataset string) (func() error, error) {
 			rem = append(rem, l)
 		}
 		if len(rem) == 0 {
-			// remove file if empty
 			if err := os.Remove(lockPath); err != nil && !os.IsNotExist(err) {
 				return err
 			}

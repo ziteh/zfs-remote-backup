@@ -29,9 +29,10 @@ make build-all          # Build for all platforms
 ### Testing
 
 ```bash
-make test                               # Unit tests
-vm/tests/01_prepare_env.sh              # VM setup
-vm/tests/02_l0_backup.sh                # Integration test
+make test               # Unit + E2E tests
+make test-unit          # Unit tests only (./internal/...)
+make test-e2e           # E2E tests only (./tests/e2e/)
+make test-coverage      # Coverage report
 ```
 
 ## Architecture
@@ -39,11 +40,25 @@ vm/tests/02_l0_backup.sh                # Integration test
 ### Directory Structure
 
 ```
-cmd/zrb/              - Go source files (all package main)
-docs/                 - Documentation
-vm/                   - VM testing infrastructure
-build/                - Build outputs
-archive/              - Legacy implementations (Python, Rust)
+cmd/zrb/main.go         - CLI entry point only
+internal/
+├── config/             - Configuration types and loading
+├── logging/            - Multi-handler logger
+├── lock/               - File-based concurrency lock
+├── crypto/             - Age encryption, BLAKE3 hashing
+├── zfs/                - ZFS send/split, snapshots
+├── remote/             - S3 backend interface and implementation
+├── manifest/           - Backup manifest types and I/O
+├── util/               - Path builders, setup helpers
+├── backup/             - Backup command logic
+├── restore/            - Restore command logic
+├── list/               - List command logic
+└── keys/               - Key generation and testing
+tests/e2e/              - End-to-end tests
+vm/                     - VM testing infrastructure
+docs/                   - Documentation
+build/                  - Build outputs
+archive/                - Legacy implementations (Python, Rust)
 ```
 
 ### Pipeline
@@ -72,12 +87,13 @@ Located in `{base_dir}/run/{pool}/{dataset}/`:
 ## Tech Stack
 
 - **Go 1.24**: age, aws-sdk-go-v2, urfave/cli, blake3
-- **Testing**: Multipass VMs, shell scripts
+- **Testing**: testify, Multipass VMs
 
 ## Code Style
 
 - Go: standard gofmt
-- All source files in cmd/zrb/ as package main
+- Business logic in `internal/` packages, CLI entry in `cmd/zrb/main.go`
+- Unit tests co-located with code: `internal/<pkg>/<pkg>_test.go`
 
 ## Code Development Principles
 

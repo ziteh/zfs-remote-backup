@@ -1,4 +1,4 @@
-package main
+package manifest
 
 import (
 	"encoding/json"
@@ -9,8 +9,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// getSystemInfo retrieves the OS and ZFS version information
-func getSystemInfo() (SystemInfo, error) {
+func GetSystemInfo() (SystemInfo, error) {
 	hostname, err := os.Hostname()
 	if err != nil {
 		hostname = "unknown"
@@ -38,77 +37,71 @@ func getSystemInfo() (SystemInfo, error) {
 		return SystemInfo{}, err
 	}
 
-	var systemInfo SystemInfo
-	systemInfo.Hostname = hostname
-	systemInfo.OS = osVersion
-	systemInfo.ZFSVersion.Userland = result.ZFSVersion.Userland
-	systemInfo.ZFSVersion.Kernel = result.ZFSVersion.Kernel
+	var info SystemInfo
+	info.Hostname = hostname
+	info.OS = osVersion
+	info.ZFSVersion.Userland = result.ZFSVersion.Userland
+	info.ZFSVersion.Kernel = result.ZFSVersion.Kernel
 
-	return systemInfo, nil
+	return info, nil
 }
 
-// writeManifest writes the backup manifest to a YAML file
-func writeManifest(filename string, manifest *BackupManifest) error {
-	data, err := yaml.Marshal(manifest)
+func Write(filename string, m *Backup) error {
+	data, err := yaml.Marshal(m)
 	if err != nil {
 		return err
 	}
-
 	return os.WriteFile(filename, data, 0o644)
 }
 
-func writeLastBackupManifest(filename string, last *LastBackup) error {
-	data, err := yaml.Marshal(last)
-	if err != nil {
-		return err
-	}
-
-	return os.WriteFile(filename, data, 0o644)
-}
-
-func readLastBackupManifest(filename string) (*LastBackup, error) {
+func Read(filename string) (*Backup, error) {
 	data, err := os.ReadFile(filename)
 	if err != nil {
 		return nil, err
 	}
-	var last LastBackup
+	var m Backup
+	if err := yaml.Unmarshal(data, &m); err != nil {
+		return nil, err
+	}
+	return &m, nil
+}
+
+func WriteLast(filename string, last *Last) error {
+	data, err := yaml.Marshal(last)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(filename, data, 0o644)
+}
+
+func ReadLast(filename string) (*Last, error) {
+	data, err := os.ReadFile(filename)
+	if err != nil {
+		return nil, err
+	}
+	var last Last
 	if err := yaml.Unmarshal(data, &last); err != nil {
 		return nil, err
 	}
 	return &last, nil
 }
 
-func writeBackupState(filename string, state *BackupState) error {
+func WriteState(filename string, state *State) error {
 	data, err := yaml.Marshal(state)
 	if err != nil {
 		return err
 	}
-
 	return os.WriteFile(filename, data, 0o644)
 }
 
-func readBackupState(filename string) (*BackupState, error) {
+func ReadState(filename string) (*State, error) {
 	data, err := os.ReadFile(filename)
 	if err != nil {
 		return nil, err
 	}
-	var state BackupState
+	var state State
 	if err := yaml.Unmarshal(data, &state); err != nil {
 		return nil, err
 	}
 	return &state, nil
-}
-
-func readManifest(filename string) (*BackupManifest, error) {
-	data, err := os.ReadFile(filename)
-	if err != nil {
-		return nil, err
-	}
-
-	var manifest BackupManifest
-	if err := yaml.Unmarshal(data, &manifest); err != nil {
-		return nil, err
-	}
-
-	return &manifest, nil
 }

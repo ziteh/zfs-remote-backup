@@ -1,4 +1,4 @@
-.PHONY: build test clean install build-all
+.PHONY: build test test-unit test-e2e test-coverage clean install build-all
 
 BINARY_NAME=zrb
 BUILD_DIR=build
@@ -16,8 +16,21 @@ build-all:
 	GOOS=darwin GOARCH=amd64 go build -ldflags="$(LDFLAGS)" -o $(BUILD_DIR)/$(BINARY_NAME)_darwin_amd64 ./cmd/zrb
 	GOOS=darwin GOARCH=arm64 go build -ldflags="$(LDFLAGS)" -o $(BUILD_DIR)/$(BINARY_NAME)_darwin_arm64 ./cmd/zrb
 
-test:
-	go test -v ./...
+test: test-unit test-e2e
+
+test-unit:
+	@echo "Running unit tests..."
+	@go test -v ./internal/...
+
+test-e2e:
+	@echo "Running E2E tests..."
+	@go test -v ./tests/e2e/
+
+test-coverage:
+	@echo "Generating coverage report..."
+	@go test -cover ./internal/... -coverprofile=coverage.out
+	@go tool cover -html=coverage.out -o coverage.html
+	@echo "Coverage report generated: coverage.html"
 
 clean:
 	rm -rf $(BUILD_DIR)

@@ -1,4 +1,4 @@
-package main
+package list
 
 import (
 	"context"
@@ -8,9 +8,12 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+	"zrb/internal/config"
+	"zrb/internal/manifest"
+	"zrb/internal/remote"
 )
 
-type BackupInfo struct {
+type Info struct {
 	Level           int16  `json:"level"`
 	Type            string `json:"type"`
 	Datetime        int64  `json:"datetime"`
@@ -25,12 +28,12 @@ type BackupInfo struct {
 	ManifestPath    string `json:"manifest_path,omitempty"`
 }
 
-type BackupListOutput struct {
-	Task    string       `json:"task"`
-	Pool    string       `json:"pool"`
-	Dataset string       `json:"dataset"`
-	Source  string       `json:"source"`
-	Backups []BackupInfo `json:"backups"`
+type Output struct {
+	Task    string `json:"task"`
+	Pool    string `json:"pool"`
+	Dataset string `json:"dataset"`
+	Source  string `json:"source"`
+	Backups []Info `json:"backups"`
 	Summary struct {
 		TotalBackups         int `json:"total_backups"`
 		FullBackups          int `json:"full_backups"`
@@ -39,36 +42,35 @@ type BackupListOutput struct {
 	} `json:"summary"`
 }
 
-func listBackups(ctx context.Context, configPath, taskName string, filterLevel int16, source string) error {
-	config, err := loadConfig(configPath)
+func Run(ctx context.Context, configPath, taskName string, filterLevel int16, source string) error {
+	cfg, err := config.Load(configPath)
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
 
-	task, err := findTask(config, taskName)
+	task, err := cfg.FindTask(taskName)
 	if err != nil {
 		return err
 	}
 
-	var lastBackup *LastBackup
-
+	var lastBackup *manifest.Last
 	var lastPath string
 
 	if source == "s3" {
-		if !config.S3.Enabled {
+		if !cfg.S3.Enabled {
 			return fmt.Errorf("S3 is not enabled in config")
 		}
 
-		manifestStorageClass := string(config.S3.StorageClass.Manifest)
-		if err := validateStorageClassAccessible(manifestStorageClass); err != nil {
+		manifestStorageClass := string(cfg.S3.StorageClass.Manifest)
+		if err := remote.ValidateStorageClass(manifestStorageClass); err != nil {
 			return fmt.Errorf("cannot list from S3: %w", err)
 		}
 
-		maxRetryAttempts := getS3RetryConfig(config)
+		maxRetryAttempts := cfg.S3RetryAttempts()
 
-		backend, err := NewS3Backend(ctx, config.S3.Bucket, config.S3.Region,
-			config.S3.Prefix, config.S3.Endpoint,
-			config.S3.StorageClass.Manifest, maxRetryAttempts)
+		backend, err := remote.NewS3(ctx, cfg.S3.Bucket, cfg.S3.Region,
+			cfg.S3.Prefix, cfg.S3.Endpoint,
+			cfg.S3.StorageClass.Manifest, maxRetryAttempts)
 		if err != nil {
 			return fmt.Errorf("failed to initialize S3 backend: %w", err)
 		}
@@ -87,20 +89,20 @@ func listBackups(ctx context.Context, configPath, taskName string, filterLevel i
 		}
 		defer os.Remove(lastPath)
 	} else {
-		lastPath = filepath.Join(config.BaseDir, "run", task.Pool, task.Dataset, "last_backup_manifest.yaml")
+		lastPath = filepath.Join(cfg.BaseDir, "run", task.Pool, task.Dataset, "last_backup_manifest.yaml")
 	}
 
-	lastBackup, err = readLastBackupManifest(lastPath)
+	lastBackup, err = manifest.ReadLast(lastPath)
 	if err != nil {
 		return fmt.Errorf("failed to read backup manifest from %s: %w", lastPath, err)
 	}
 
-	output := BackupListOutput{
+	output := Output{
 		Task:    taskName,
 		Pool:    task.Pool,
 		Dataset: task.Dataset,
 		Source:  source,
-		Backups: []BackupInfo{},
+		Backups: []Info{},
 	}
 
 	for level, ref := range lastBackup.BackupLevels {
@@ -120,21 +122,18 @@ func listBackups(ctx context.Context, configPath, taskName string, filterLevel i
 		estimatedSizeGB := len(ref.Blake3Hash)
 
 		if ref.Manifest != "" {
-			if manifest, err := readManifest(ref.Manifest); err == nil {
-				estimatedSizeGB = len(manifest.Parts) * 3
+			if m, err := manifest.Read(ref.Manifest); err == nil {
+				estimatedSizeGB = len(m.Parts) * 3
 			}
 		}
 
-		info := BackupInfo{
+		info := Info{
 			Level:           int16(level),
 			Type:            backupType,
 			Datetime:        ref.Datetime,
 			DatetimeStr:     time.Unix(ref.Datetime, 0).Format("2006-01-02 15:04:05"),
 			Snapshot:        ref.Snapshot,
-			ParentSnapshot:  "",
-			ParentS3Path:    "",
 			Blake3Hash:      ref.Blake3Hash,
-			PartsCount:      0,
 			EstimatedSizeGB: estimatedSizeGB,
 			S3Path:          ref.S3Path,
 			ManifestPath:    ref.Manifest,
@@ -147,8 +146,8 @@ func listBackups(ctx context.Context, configPath, taskName string, filterLevel i
 		}
 
 		if ref.Manifest != "" {
-			if manifest, err := readManifest(ref.Manifest); err == nil {
-				info.PartsCount = len(manifest.Parts)
+			if m, err := manifest.Read(ref.Manifest); err == nil {
+				info.PartsCount = len(m.Parts)
 			}
 		}
 
@@ -162,7 +161,6 @@ func listBackups(ctx context.Context, configPath, taskName string, filterLevel i
 		} else {
 			output.Summary.IncrementalBackups++
 		}
-
 		output.Summary.TotalEstimatedSizeGB += backup.EstimatedSizeGB
 	}
 

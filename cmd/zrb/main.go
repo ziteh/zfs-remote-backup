@@ -7,6 +7,11 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"zrb/internal/backup"
+	"zrb/internal/keys"
+	"zrb/internal/list"
+	"zrb/internal/restore"
+	"zrb/internal/zfs"
 
 	"github.com/urfave/cli/v3"
 )
@@ -21,7 +26,7 @@ func main() {
 				Name:  "genkey",
 				Usage: "Generate public and private key pair",
 				Action: func(ctx context.Context, cmd *cli.Command) error {
-					return generateKey(ctx)
+					return keys.Generate(ctx)
 				},
 			},
 			{
@@ -40,7 +45,7 @@ func main() {
 					},
 				},
 				Action: func(ctx context.Context, cmd *cli.Command) error {
-					return testKeys(ctx, cmd.String("config"), cmd.String("private-key"))
+					return keys.Test(ctx, cmd.String("config"), cmd.String("private-key"))
 				},
 			},
 			{
@@ -64,10 +69,7 @@ func main() {
 					},
 				},
 				Action: func(ctx context.Context, cmd *cli.Command) error {
-					configPath := cmd.String("config")
-					taskName := cmd.String("task")
-					backupLevel := cmd.Int16("level")
-					return runBackup(ctx, configPath, backupLevel, taskName)
+					return backup.Run(ctx, cmd.String("config"), cmd.Int16("level"), cmd.String("task"))
 				},
 			},
 			{
@@ -91,11 +93,7 @@ func main() {
 					},
 				},
 				Action: func(ctx context.Context, cmd *cli.Command) error {
-					pool := cmd.String("pool")
-					dataset := cmd.String("dataset")
-					prefix := cmd.String("prefix")
-
-					return runSnapshotCommand(pool, dataset, prefix)
+					return zfs.CreateSnapshot(cmd.String("pool"), cmd.String("dataset"), cmd.String("prefix"))
 				},
 			},
 			{
@@ -124,11 +122,7 @@ func main() {
 					},
 				},
 				Action: func(ctx context.Context, cmd *cli.Command) error {
-					configPath := cmd.String("config")
-					taskName := cmd.String("task")
-					filterLevel := cmd.Int16("level")
-					source := cmd.String("source")
-					return listBackups(ctx, configPath, taskName, filterLevel, source)
+					return list.Run(ctx, cmd.String("config"), cmd.String("task"), cmd.Int16("level"), cmd.String("source"))
 				},
 			},
 			{
@@ -172,7 +166,7 @@ func main() {
 					},
 				},
 				Action: func(ctx context.Context, cmd *cli.Command) error {
-					return restoreBackup(ctx, cmd.String("config"), cmd.String("task"),
+					return restore.Run(ctx, cmd.String("config"), cmd.String("task"),
 						cmd.Int16("level"), cmd.String("target"), cmd.String("private-key"),
 						cmd.String("source"), cmd.Bool("dry-run"))
 				},
@@ -180,16 +174,13 @@ func main() {
 		},
 	}
 
-	// Set up signal handling for graceful shutdown
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	// Run the CLI with cancellable context
 	if err := cmd.Run(ctx, os.Args); err != nil {
-		// Check if error is due to context cancellation (user interrupt)
 		if ctx.Err() == context.Canceled {
 			fmt.Fprintln(os.Stderr, "\n⚠ Backup interrupted by user")
-			os.Exit(130) // Standard exit code for SIGINT
+			os.Exit(130)
 		}
 		slog.Error("CLI error", "error", err)
 		os.Exit(1)
