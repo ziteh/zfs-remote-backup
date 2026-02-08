@@ -71,7 +71,7 @@ Located in `{base_dir}/run/{pool}/{dataset}/`:
 
 ## Tech Stack
 
-- **Go 1.23**: age, aws-sdk-go-v2, urfave/cli, blake3
+- **Go 1.24**: age, aws-sdk-go-v2, urfave/cli, blake3
 - **Testing**: Multipass VMs, shell scripts
 
 ## Code Style

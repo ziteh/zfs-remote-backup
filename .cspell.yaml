@@ -22,6 +22,7 @@ words:
   - genkey
   - gofmt
   - gopkg
+  - hpke
   - imds
   - klauspost
   - softprops
