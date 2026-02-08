@@ -11,8 +11,8 @@ echo ""
 # Test 1: Transfer binary
 echo "Test 1: Transfer updated binary to VM"
 echo "----------------------------------------"
-if [ -f "./build/zrb_simple" ]; then
-    multipass transfer ./build/zrb_simple "$VM:/tmp/zrb_shutdown"
+if [ -f "./build/zrb" ]; then
+    multipass transfer ./build/zrb "$VM:/tmp/zrb_shutdown"
     multipass exec "$VM" -- chmod +x /tmp/zrb_shutdown
     echo "✓ Binary transferred"
 else
@@ -175,7 +175,7 @@ multipass exec "$VM" -- bash -lc "
 
     # Show process info
     echo \"Process status:\"
-    ps aux | grep zrb_simple_shutdown | grep -v grep || echo \"Process not found\"
+    ps aux | grep zrb_shutdown | grep -v grep || echo \"Process not found\"
 
     echo \"\"
     echo \"To manually stop this backup, you would run:\"
@@ -219,18 +219,18 @@ echo ""
 echo "Production usage (TrueNAS):"
 echo ""
 echo "1. To stop a running backup:"
-echo "   pkill -TERM zrb_simple"
+echo "   pkill -TERM zrb"
 echo "   # or if using systemd:"
 echo "   systemctl stop zrb-backup.service"
 echo ""
 echo "2. To resume after interruption:"
-echo "   zrb_simple backup --config config.yaml --task taskname --level 0"
+echo "   zrb backup --config config.yaml --task taskname --level 0"
 echo "   (Will automatically resume from saved state)"
 echo ""
 echo "3. Systemd integration example:"
 echo "   [Service]"
 echo "   Type=simple"
-echo "   ExecStart=/usr/local/bin/zrb_simple backup --config /etc/zrb/config.yaml --task prod --level 0"
+echo "   ExecStart=/usr/local/bin/zrb backup --config /etc/zrb/config.yaml --task prod --level 0"
 echo "   TimeoutStopSec=300"
 echo "   KillMode=mixed"
 echo "   KillSignal=SIGTERM"

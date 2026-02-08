@@ -34,7 +34,7 @@ MinIO Details:
 
 ---
 
-### 00_transfer_zrb_simple.sh
+### 00_transfer_zrb.sh
 **Purpose**: Transfer compiled binary to VM
 
 ---
@@ -120,8 +120,8 @@ MinIO Details:
 **Manual Test Example**:
 ```bash
 # Dry-run
-multipass exec zrb-vm -- sudo /tmp/zrb_simple restore \
-  --config /tmp/zrb_simple_config.yaml \
+multipass exec zrb-vm -- sudo /tmp/zrb restore \
+  --config /tmp/zrb_config.yaml \
   --task test_backup \
   --level 0 \
   --target testpool/restored_test \
@@ -130,8 +130,8 @@ multipass exec zrb-vm -- sudo /tmp/zrb_simple restore \
   --dry-run
 
 # Actual restore
-multipass exec zrb-vm -- sudo /tmp/zrb_simple restore \
-  --config /tmp/zrb_simple_config.yaml \
+multipass exec zrb-vm -- sudo /tmp/zrb restore \
+  --config /tmp/zrb_config.yaml \
   --task test_backup \
   --level 0 \
   --target testpool/restored_test \
@@ -247,7 +247,7 @@ tasks:
 ```bash
 export AWS_ACCESS_KEY_ID=admin
 export AWS_SECRET_ACCESS_KEY=password123
-sudo -E /tmp/zrb_simple backup --config /tmp/config.yaml ...
+sudo -E /tmp/zrb backup --config /tmp/config.yaml ...
 ```
 
 ---
@@ -273,7 +273,7 @@ multipass exec zrb-vm -- sudo rm /home/ubuntu/zrb_base/run/testpool/backup_data/
 ```bash
 export AWS_ACCESS_KEY_ID=admin
 export AWS_SECRET_ACCESS_KEY=password123
-sudo -E /tmp/zrb_simple backup ...
+sudo -E /tmp/zrb backup ...
 ```
 
 ### Issue: MinIO not running

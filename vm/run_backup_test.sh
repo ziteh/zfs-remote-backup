@@ -2,10 +2,10 @@
 set -euo pipefail
 
 VM_NAME="zfs-minio"
-BIN_LOCAL="$(cd "$(dirname "$0")/.." && pwd)/simple_backup/build/zrb_simple_linux_arm64"
-BIN_REMOTE="/tmp/zrb_simple_linux_arm64"
-CONFIG_LOCAL="$(cd "$(dirname "$0")" && pwd)/zrb_simple_config.yaml"
-CONFIG_REMOTE="/tmp/zrb_simple_config.yaml"
+BIN_LOCAL="$(cd "$(dirname "$0")/.." && pwd)/build/zrb_linux_arm64"
+BIN_REMOTE="/tmp/zrb_linux_arm64"
+CONFIG_LOCAL="$(cd "$(dirname "$0")" && pwd)/config.yaml"
+CONFIG_REMOTE="/tmp/zrb_config.yaml"
 
 if ! command -v multipass >/dev/null 2>&1; then
   echo "multipass not found; please install multipass"
@@ -19,7 +19,7 @@ if [ -f "$BIN_LOCAL" ]; then
   multipass transfer "$BIN_LOCAL" "$VM_NAME:$BIN_REMOTE"
   multipass exec "$VM_NAME" -- sudo chmod +x "$BIN_REMOTE"
 else
-  echo "Binary not found at $BIN_LOCAL — build first with ./simple_backup/build.sh" >&2
+  echo "Binary not found at $BIN_LOCAL — build first with make build-linux" >&2
   exit 1
 fi
 
@@ -30,7 +30,7 @@ echo "Create a fresh full snapshot inside VM"
 multipass exec "$VM_NAME" -- sudo $BIN_REMOTE snapshot --pool testpool --dataset backup_data --prefix zrb_full 2>&1 || true
 
 echo "Run full backup (will upload to MinIO)"
-multipass exec "$VM_NAME" -- sudo bash -c 'export AWS_ACCESS_KEY_ID=admin AWS_SECRET_ACCESS_KEY=password123 && /tmp/zrb_simple_linux_arm64 backup --config /tmp/zrb_simple_config.yaml --type full --task daily_backup' 2>&1 || true
+multipass exec "$VM_NAME" -- sudo bash -c 'export AWS_ACCESS_KEY_ID=admin AWS_SECRET_ACCESS_KEY=password123 && /tmp/zrb_linux_arm64 backup --config /tmp/zrb_config.yaml --type full --task daily_backup' 2>&1 || true
 
 echo "Wait and show recent log lines"
 multipass exec "$VM_NAME" -- sudo bash -c 'sleep 5; L=$(ls -1t /tmp/zrb_backups/logs/testpool/backup_data/*.log | head -1); tail -40 "$L" | tail -20' || true
@@ -49,7 +49,7 @@ echo "Create diff snapshot"
 multipass exec "$VM_NAME" -- sudo $BIN_REMOTE snapshot --pool testpool --dataset backup_data --prefix zrb_diff 2>&1 || true
 
 echo "Run diff backup"
-multipass exec "$VM_NAME" -- sudo bash -c 'export AWS_ACCESS_KEY_ID=admin AWS_SECRET_ACCESS_KEY=password123 && /tmp/zrb_simple_linux_arm64 backup --config /tmp/zrb_simple_config.yaml --type diff --task daily_backup' 2>&1 || true
+multipass exec "$VM_NAME" -- sudo bash -c 'export AWS_ACCESS_KEY_ID=admin AWS_SECRET_ACCESS_KEY=password123 && /tmp/zrb_linux_arm64 backup --config /tmp/zrb_config.yaml --type diff --task daily_backup' 2>&1 || true
 
 echo "Wait and show recent log lines for diff"
 multipass exec "$VM_NAME" -- sudo bash -c 'sleep 3; L=$(ls -1t /tmp/zrb_backups/logs/testpool/backup_data/*.log | head -1); tail -20 "$L"' || true

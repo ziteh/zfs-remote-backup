@@ -1,4 +1,4 @@
-module zrb_simple
+module zrb
 
 go 1.23
 

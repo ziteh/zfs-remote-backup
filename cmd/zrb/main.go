@@ -23,7 +23,7 @@ import (
 
 func main() {
 	cmd := &cli.Command{
-		Name:    "zrb_simple",
+		Name:    "zrb",
 		Usage:   "ZFS Remote Backup",
 		Version: "0.1.0",
 		Commands: []*cli.Command{
@@ -41,7 +41,7 @@ func main() {
 					&cli.StringFlag{
 						Name:  "config",
 						Usage: "path to configuration yaml file",
-						Value: "zrb_simple_config.yaml",
+						Value: "zrb_config.yaml",
 					},
 					&cli.StringFlag{
 						Name:     "private-key",
@@ -60,7 +60,7 @@ func main() {
 					&cli.StringFlag{
 						Name:  "config",
 						Usage: "path to configuration yaml file",
-						Value: "zrb_simple_config.yaml",
+						Value: "zrb_config.yaml",
 					},
 					&cli.StringFlag{
 						Name:     "task",
@@ -114,7 +114,7 @@ func main() {
 					&cli.StringFlag{
 						Name:  "config",
 						Usage: "path to configuration yaml file",
-						Value: "zrb_simple_config.yaml",
+						Value: "zrb_config.yaml",
 					},
 					&cli.StringFlag{
 						Name:     "task",
@@ -147,7 +147,7 @@ func main() {
 					&cli.StringFlag{
 						Name:  "config",
 						Usage: "path to configuration yaml file",
-						Value: "zrb_simple_config.yaml",
+						Value: "zrb_config.yaml",
 					},
 					&cli.StringFlag{
 						Name:     "task",

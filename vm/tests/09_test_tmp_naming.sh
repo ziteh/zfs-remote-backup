@@ -11,8 +11,8 @@ echo "=== Testing new .tmp file naming format ==="
 echo ""
 echo "Test 1: Transfer updated binary to VM"
 echo "----------------------------------------"
-if [ -f "./build/zrb_simple" ]; then
-    multipass transfer ./build/zrb_simple "$VM:/tmp/zrb_new"
+if [ -f "./build/zrb" ]; then
+    multipass transfer ./build/zrb "$VM:/tmp/zrb_new"
     multipass exec "$VM" -- chmod +x /tmp/zrb_new
     echo "✓ Binary transferred"
 else

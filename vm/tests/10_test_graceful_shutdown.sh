@@ -14,12 +14,12 @@ echo ""
 # Test 1: Transfer binary
 echo "Test 1: Transfer updated binary to VM"
 echo "----------------------------------------"
-if [ -f "./build/zrb_simple" ]; then
-    multipass transfer ./build/zrb_simple "$VM:/tmp/zrb_shutdown"
+if [ -f "./build/zrb" ]; then
+    multipass transfer ./build/zrb "$VM:/tmp/zrb_shutdown"
     multipass exec "$VM" -- chmod +x /tmp/zrb_shutdown
     echo "✓ Binary transferred"
 else
-    echo "✗ Binary not found. Run: GOOS=linux GOARCH=arm64 go build -C simple_backup -o ../build/zrb_simple ."
+    echo "✗ Binary not found. Run: make build"
     exit 1
 fi
 
@@ -241,8 +241,8 @@ echo "Usage in production (TrueNAS):"
 echo "  1. To stop a running backup:"
 echo "     systemctl stop zrb-backup.service"
 echo "     # or"
-echo "     pkill -TERM zrb_simple"
+echo "     pkill -TERM zrb"
 echo ""
 echo "  2. To resume interrupted backup:"
-echo "     zrb_simple backup --config config.yaml --task taskname --level 0"
+echo "     zrb backup --config config.yaml --task taskname --level 0"
 echo "     # Will automatically detect and resume from saved state"
