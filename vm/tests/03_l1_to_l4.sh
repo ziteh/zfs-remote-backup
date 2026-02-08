@@ -2,7 +2,7 @@
 set -e
 
 VM="zrb-vm"
-CONFIG_REMOTE="/tmp/zrb_simple_config.yaml"
+CONFIG_REMOTE="/tmp/zrb_config.yaml"
 
   echo "Creating config directly on VM for incremental backups"
   multipass exec "$VM" -- bash -lc "cat > $CONFIG_REMOTE <<'YAML'
@@ -30,7 +30,7 @@ for level in 1 2 3 4; do
   echo "Running backup level $level"
   # create a snapshot for this level to be used by the backup
   multipass exec "$VM" -- sudo bash -lc "zfs snapshot testpool/backup_data@zrb_level${level}_$(date +%s) || true"
-  multipass exec "$VM" -- sudo /tmp/zrb_simple backup --config "$CONFIG_REMOTE" --task test_backup --level $level
+  multipass exec "$VM" -- sudo /tmp/zrb backup --config "$CONFIG_REMOTE" --task test_backup --level $level
 done
 
 echo "L1-L4 backups completed"

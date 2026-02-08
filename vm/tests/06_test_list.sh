@@ -2,7 +2,7 @@
 set -e
 
 VM="zrb-vm"
-CONFIG_REMOTE="/tmp/zrb_simple_config.yaml"
+CONFIG_REMOTE="/tmp/zrb_config.yaml"
 
 echo "=== Testing list command ==="
 
@@ -10,7 +10,7 @@ echo "=== Testing list command ==="
 echo ""
 echo "Test 1: List all backups (local source)"
 echo "----------------------------------------"
-OUTPUT=$(multipass exec "$VM" -- /tmp/zrb_simple list --config "$CONFIG_REMOTE" --task test_backup --source local)
+OUTPUT=$(multipass exec "$VM" -- /tmp/zrb list --config "$CONFIG_REMOTE" --task test_backup --source local)
 echo "$OUTPUT"
 
 # Verify JSON structure
@@ -39,7 +39,7 @@ fi
 echo ""
 echo "Test 2: Filter by level 0"
 echo "----------------------------------------"
-OUTPUT_L0=$(multipass exec "$VM" -- /tmp/zrb_simple list --config "$CONFIG_REMOTE" --task test_backup --level 0 --source local)
+OUTPUT_L0=$(multipass exec "$VM" -- /tmp/zrb list --config "$CONFIG_REMOTE" --task test_backup --level 0 --source local)
 echo "$OUTPUT_L0"
 
 # Verify level filtering
@@ -62,7 +62,7 @@ fi
 echo ""
 echo "Test 3: Filter by level 1 (if exists)"
 echo "----------------------------------------"
-OUTPUT_L1=$(multipass exec "$VM" -- /tmp/zrb_simple list --config "$CONFIG_REMOTE" --task test_backup --level 1 --source local || echo '{"backups":[]}')
+OUTPUT_L1=$(multipass exec "$VM" -- /tmp/zrb list --config "$CONFIG_REMOTE" --task test_backup --level 1 --source local || echo '{"backups":[]}')
 echo "$OUTPUT_L1"
 
 if echo "$OUTPUT_L1" | grep -q '"level": 1'; then
@@ -145,7 +145,7 @@ if multipass exec "$VM" -- grep -q "enabled: true" "$CONFIG_REMOTE" 2>/dev/null;
     if [ "$MANIFEST_CLASS" = "GLACIER" ] || [ "$MANIFEST_CLASS" = "DEEP_ARCHIVE" ]; then
         echo "⚠ Manifest is in $MANIFEST_CLASS - S3 list test will be skipped (expected to fail)"
     else
-        OUTPUT_S3=$(multipass exec "$VM" -- /tmp/zrb_simple list --config "$CONFIG_REMOTE" --task test_backup --source s3 2>&1 || echo "S3_LIST_FAILED")
+        OUTPUT_S3=$(multipass exec "$VM" -- /tmp/zrb list --config "$CONFIG_REMOTE" --task test_backup --source s3 2>&1 || echo "S3_LIST_FAILED")
 
         if echo "$OUTPUT_S3" | grep -q "S3_LIST_FAILED\|failed to download"; then
             echo "ℹ S3 list failed (manifest may not be uploaded yet or MinIO not running)"
@@ -165,7 +165,7 @@ fi
 echo ""
 echo "Test 7: Test error handling - invalid task name"
 echo "----------------------------------------"
-ERROR_OUTPUT=$(multipass exec "$VM" -- /tmp/zrb_simple list --config "$CONFIG_REMOTE" --task nonexistent_task --source local 2>&1 || true)
+ERROR_OUTPUT=$(multipass exec "$VM" -- /tmp/zrb list --config "$CONFIG_REMOTE" --task nonexistent_task --source local 2>&1 || true)
 if echo "$ERROR_OUTPUT" | grep -q "not found\|error"; then
     echo "✓ Properly handles invalid task name"
 else
@@ -177,7 +177,7 @@ fi
 echo ""
 echo "Test 8: Pretty print full output for manual inspection"
 echo "----------------------------------------"
-multipass exec "$VM" -- /tmp/zrb_simple list --config "$CONFIG_REMOTE" --task test_backup --source local | python3 -m json.tool 2>/dev/null || echo "$OUTPUT"
+multipass exec "$VM" -- /tmp/zrb list --config "$CONFIG_REMOTE" --task test_backup --source local | python3 -m json.tool 2>/dev/null || echo "$OUTPUT"
 
 echo ""
 echo "=== All list command tests completed ==="

@@ -71,7 +71,7 @@ multipass exec "$VM" -- sudo zfs snapshot testpool/backup_data@zrb_s3_level0_$TI
 BACKUP_OUTPUT=$(multipass exec "$VM" -- bash -lc "
 export AWS_ACCESS_KEY_ID=admin
 export AWS_SECRET_ACCESS_KEY=password123
-sudo -E /tmp/zrb_simple backup --config $CONFIG_REMOTE --task s3_test_backup --level 0 2>&1
+sudo -E /tmp/zrb backup --config $CONFIG_REMOTE --task s3_test_backup --level 0 2>&1
 ")
 
 echo "$BACKUP_OUTPUT"
@@ -107,7 +107,7 @@ echo "----------------------------------------"
 DRY_RUN_OUTPUT=$(multipass exec "$VM" -- bash -lc "
 export AWS_ACCESS_KEY_ID=admin
 export AWS_SECRET_ACCESS_KEY=password123
-sudo -E /tmp/zrb_simple restore \
+sudo -E /tmp/zrb restore \
     --config $CONFIG_REMOTE \
     --task s3_test_backup \
     --level 0 \
@@ -172,7 +172,7 @@ echo "This may take a few moments..."
 RESTORE_OUTPUT=$(multipass exec "$VM" -- bash -lc "
 export AWS_ACCESS_KEY_ID=admin
 export AWS_SECRET_ACCESS_KEY=password123
-sudo -E /tmp/zrb_simple restore \
+sudo -E /tmp/zrb restore \
     --config $CONFIG_REMOTE \
     --task s3_test_backup \
     --level 0 \

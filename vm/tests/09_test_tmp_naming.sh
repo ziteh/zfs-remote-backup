@@ -12,8 +12,8 @@ echo ""
 echo "Test 1: Transfer updated binary to VM"
 echo "----------------------------------------"
 if [ -f "./build/zrb_simple" ]; then
-    multipass transfer ./build/zrb_simple "$VM:/tmp/zrb_simple_new"
-    multipass exec "$VM" -- chmod +x /tmp/zrb_simple_new
+    multipass transfer ./build/zrb_simple "$VM:/tmp/zrb_new"
+    multipass exec "$VM" -- chmod +x /tmp/zrb_new
     echo "✓ Binary transferred"
 else
     echo "✗ Binary not found. Run: ./build.sh"
@@ -60,7 +60,7 @@ echo "Starting backup in background..."
 
 # Run backup in background
 multipass exec "$VM" -- bash -lc "
-    sudo /tmp/zrb_simple_new backup --config $CONFIG_REMOTE --task naming_test --level 0 > /tmp/backup_output.log 2>&1 &
+    sudo /tmp/zrb_new backup --config $CONFIG_REMOTE --task naming_test --level 0 > /tmp/backup_output.log 2>&1 &
     BACKUP_PID=\$!
 
     # Wait a moment for files to start being created
@@ -173,7 +173,7 @@ echo "Test 9: Cleanup test data"
 echo "----------------------------------------"
 multipass exec "$VM" -- sudo zfs destroy testpool/backup_data@zrb_naming_test_$TIMESTAMP || true
 multipass exec "$VM" -- bash -lc "sudo rm -rf $TEST_BASE" || true
-multipass exec "$VM" -- rm -f /tmp/backup_output.log /tmp/zrb_simple_new || true
+multipass exec "$VM" -- rm -f /tmp/backup_output.log /tmp/zrb_new || true
 echo "✓ Cleanup completed"
 
 # Summary

@@ -2,7 +2,7 @@
 set -e
 
 VM="zrb-vm"
-CONFIG_REMOTE="/tmp/zrb_simple_config.yaml"
+CONFIG_REMOTE="/tmp/zrb_config.yaml"
 PRIVATE_KEY="/home/ubuntu/age_private_key.txt"
 RESTORE_TARGET="testpool/restored_test"
 
@@ -24,7 +24,7 @@ fi
 echo ""
 echo "Test 1: Dry-run restore level 0"
 echo "----------------------------------------"
-DRY_RUN_OUTPUT=$(multipass exec "$VM" -- /tmp/zrb_simple restore \
+DRY_RUN_OUTPUT=$(multipass exec "$VM" -- /tmp/zrb restore \
     --config "$CONFIG_REMOTE" \
     --task test_backup \
     --level 0 \
@@ -85,7 +85,7 @@ echo "Test 3: Restore level 0 backup"
 echo "----------------------------------------"
 echo "This may take a few moments..."
 
-RESTORE_OUTPUT=$(multipass exec "$VM" -- sudo /tmp/zrb_simple restore \
+RESTORE_OUTPUT=$(multipass exec "$VM" -- sudo /tmp/zrb restore \
     --config "$CONFIG_REMOTE" \
     --task test_backup \
     --level 0 \
@@ -174,7 +174,7 @@ fi
 echo ""
 echo "Test 8: Test error handling - invalid backup level"
 echo "----------------------------------------"
-ERROR_OUTPUT=$(multipass exec "$VM" -- sudo /tmp/zrb_simple restore \
+ERROR_OUTPUT=$(multipass exec "$VM" -- sudo /tmp/zrb restore \
     --config "$CONFIG_REMOTE" \
     --task test_backup \
     --level 99 \
@@ -193,7 +193,7 @@ fi
 echo ""
 echo "Test 9: Test error handling - invalid task name"
 echo "----------------------------------------"
-ERROR_OUTPUT=$(multipass exec "$VM" -- sudo /tmp/zrb_simple restore \
+ERROR_OUTPUT=$(multipass exec "$VM" -- sudo /tmp/zrb restore \
     --config "$CONFIG_REMOTE" \
     --task nonexistent_task \
     --level 0 \
@@ -212,7 +212,7 @@ fi
 echo ""
 echo "Test 10: Test error handling - missing private key"
 echo "----------------------------------------"
-ERROR_OUTPUT=$(multipass exec "$VM" -- sudo /tmp/zrb_simple restore \
+ERROR_OUTPUT=$(multipass exec "$VM" -- sudo /tmp/zrb restore \
     --config "$CONFIG_REMOTE" \
     --task test_backup \
     --level 0 \

@@ -12,8 +12,8 @@ echo ""
 echo "Test 1: Transfer updated binary to VM"
 echo "----------------------------------------"
 if [ -f "./build/zrb_simple" ]; then
-    multipass transfer ./build/zrb_simple "$VM:/tmp/zrb_simple_shutdown"
-    multipass exec "$VM" -- chmod +x /tmp/zrb_simple_shutdown
+    multipass transfer ./build/zrb_simple "$VM:/tmp/zrb_shutdown"
+    multipass exec "$VM" -- chmod +x /tmp/zrb_shutdown
     echo "✓ Binary transferred"
 else
     echo "✗ Binary not found"
@@ -73,7 +73,7 @@ echo "Starting backup in background..."
 
 # Start backup in background and capture PID
 multipass exec "$VM" -- bash -lc "
-    sudo /tmp/zrb_simple_shutdown backup --config $CONFIG_REMOTE --task shutdown_test --level 0 > /tmp/shutdown_test_large.log 2>&1 &
+    sudo /tmp/zrb_shutdown backup --config $CONFIG_REMOTE --task shutdown_test --level 0 > /tmp/shutdown_test_large.log 2>&1 &
     BACKUP_PID=\$!
     echo \$BACKUP_PID
 
@@ -167,7 +167,7 @@ multipass exec "$VM" -- bash -lc "sudo rm -rf $TEST_BASE" || true
 
 # Start backup
 multipass exec "$VM" -- bash -lc "
-    sudo /tmp/zrb_simple_shutdown backup --config $CONFIG_REMOTE --task shutdown_test --level 0 > /tmp/shutdown_manual.log 2>&1 &
+    sudo /tmp/zrb_shutdown backup --config $CONFIG_REMOTE --task shutdown_test --level 0 > /tmp/shutdown_manual.log 2>&1 &
     BACKUP_PID=\$!
 
     echo \"Backup PID: \$BACKUP_PID\"
@@ -202,7 +202,7 @@ echo "----------------------------------------"
 multipass exec "$VM" -- bash -lc "
     sudo zfs destroy -r testpool/large_test 2>/dev/null || true
     sudo rm -rf $TEST_BASE
-    rm -f /tmp/shutdown_test_large.log /tmp/shutdown_manual.log /tmp/zrb_simple_shutdown
+    rm -f /tmp/shutdown_test_large.log /tmp/shutdown_manual.log /tmp/zrb_shutdown
 " || true
 echo "✓ Cleanup completed"
 

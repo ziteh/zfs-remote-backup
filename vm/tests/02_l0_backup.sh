@@ -2,7 +2,7 @@
 set -e
 
 VM="zrb-vm"
-CONFIG_REMOTE="/tmp/zrb_simple_config.yaml"
+CONFIG_REMOTE="/tmp/zrb_config.yaml"
 
 echo "Creating config directly on VM"
 multipass exec "$VM" -- bash -lc "cat > $CONFIG_REMOTE <<'YAML'
@@ -26,6 +26,6 @@ YAML"
 
 multipass exec "$VM" -- sudo zfs snapshot testpool/backup_data@zrb_level0_$(date +%s) || true
 
-multipass exec "$VM" -- sudo /tmp/zrb_simple backup --config "$CONFIG_REMOTE" --task test_backup --level 0
+multipass exec "$VM" -- sudo /tmp/zrb backup --config "$CONFIG_REMOTE" --task test_backup --level 0
 
 echo "L0 backup completed. Check /home/ubuntu/zrb_base/task/... for output"

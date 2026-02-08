@@ -15,8 +15,8 @@ echo ""
 echo "Test 1: Transfer updated binary to VM"
 echo "----------------------------------------"
 if [ -f "./build/zrb_simple" ]; then
-    multipass transfer ./build/zrb_simple "$VM:/tmp/zrb_simple_shutdown"
-    multipass exec "$VM" -- chmod +x /tmp/zrb_simple_shutdown
+    multipass transfer ./build/zrb_simple "$VM:/tmp/zrb_shutdown"
+    multipass exec "$VM" -- chmod +x /tmp/zrb_shutdown
     echo "✓ Binary transferred"
 else
     echo "✗ Binary not found. Run: GOOS=linux GOARCH=arm64 go build -C simple_backup -o ../build/zrb_simple ."
@@ -63,7 +63,7 @@ echo "Starting backup in background..."
 
 # Start backup in background and capture PID
 multipass exec "$VM" -- bash -lc "
-    sudo /tmp/zrb_simple_shutdown backup --config $CONFIG_REMOTE --task shutdown_test --level 0 > /tmp/shutdown_test.log 2>&1 &
+    sudo /tmp/zrb_shutdown backup --config $CONFIG_REMOTE --task shutdown_test --level 0 > /tmp/shutdown_test.log 2>&1 &
     BACKUP_PID=\$!
     echo \$BACKUP_PID > /tmp/backup_pid.txt
 
@@ -171,7 +171,7 @@ echo "----------------------------------------"
 echo "Starting another backup..."
 
 multipass exec "$VM" -- bash -lc "
-    sudo /tmp/zrb_simple_shutdown backup --config $CONFIG_REMOTE --task shutdown_test --level 0 > /tmp/shutdown_test2.log 2>&1 &
+    sudo /tmp/zrb_shutdown backup --config $CONFIG_REMOTE --task shutdown_test --level 0 > /tmp/shutdown_test2.log 2>&1 &
     BACKUP_PID=\$!
 
     # Wait for backup to start
@@ -200,7 +200,7 @@ echo "----------------------------------------"
 if multipass exec "$VM" -- test -f "$TEST_BASE/run/testpool/backup_data/backup_state.yaml"; then
     echo "Starting resume..."
 
-    RESUME_OUTPUT=$(multipass exec "$VM" -- sudo /tmp/zrb_simple_shutdown backup \
+    RESUME_OUTPUT=$(multipass exec "$VM" -- sudo /tmp/zrb_shutdown backup \
         --config $CONFIG_REMOTE --task shutdown_test --level 0 2>&1)
 
     if echo "$RESUME_OUTPUT" | grep -q "Found existing backup state"; then
@@ -222,7 +222,7 @@ echo "Test 12: Cleanup test data"
 echo "----------------------------------------"
 multipass exec "$VM" -- sudo zfs destroy testpool/backup_data@zrb_shutdown_test_$TIMESTAMP || true
 multipass exec "$VM" -- bash -lc "sudo rm -rf $TEST_BASE" || true
-multipass exec "$VM" -- rm -f /tmp/shutdown_test.log /tmp/shutdown_test2.log /tmp/backup_pid.txt /tmp/zrb_simple_shutdown || true
+multipass exec "$VM" -- rm -f /tmp/shutdown_test.log /tmp/shutdown_test2.log /tmp/backup_pid.txt /tmp/zrb_shutdown || true
 echo "✓ Cleanup completed"
 
 # Summary
