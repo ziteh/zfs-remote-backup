@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=./zrb-config-schema.json
+# yaml-language-server: $schema=https://raw.githubusercontent.com/ziteh/zfs-remote-backup/refs/heads/main/docs/config-schema.json
 
 base_dir: /mnt/pool/dataset/zrb/
 age_public_key: age1xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
