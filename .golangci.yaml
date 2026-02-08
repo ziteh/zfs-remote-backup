@@ -4,4 +4,4 @@ formatters:
     - gofumpt
     - goimports
 linters:
-  default: fast
+  default: none

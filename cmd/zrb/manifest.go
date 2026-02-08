@@ -54,7 +54,7 @@ func writeManifest(filename string, manifest *BackupManifest) error {
 		return err
 	}
 
-	return os.WriteFile(filename, data, 0644)
+	return os.WriteFile(filename, data, 0o644)
 }
 
 func writeLastBackupManifest(filename string, last *LastBackup) error {
@@ -63,7 +63,7 @@ func writeLastBackupManifest(filename string, last *LastBackup) error {
 		return err
 	}
 
-	return os.WriteFile(filename, data, 0644)
+	return os.WriteFile(filename, data, 0o644)
 }
 
 func readLastBackupManifest(filename string) (*LastBackup, error) {
@@ -83,7 +83,8 @@ func writeBackupState(filename string, state *BackupState) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(filename, data, 0644)
+
+	return os.WriteFile(filename, data, 0o644)
 }
 
 func readBackupState(filename string) (*BackupState, error) {
@@ -96,4 +97,18 @@ func readBackupState(filename string) (*BackupState, error) {
 		return nil, err
 	}
 	return &state, nil
+}
+
+func readManifest(filename string) (*BackupManifest, error) {
+	data, err := os.ReadFile(filename)
+	if err != nil {
+		return nil, err
+	}
+
+	var manifest BackupManifest
+	if err := yaml.Unmarshal(data, &manifest); err != nil {
+		return nil, err
+	}
+
+	return &manifest, nil
 }
