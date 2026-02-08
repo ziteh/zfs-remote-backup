@@ -22,8 +22,7 @@ make build
 
 ## Legacy Implementations
 
-- [archive/rust-experimental/](./archive/rust-experimental/) - Exploratory Rust implementation.
-- [archive/python-legacy/](./archive/python-legacy/) - Docker-based Python implementation.
+- [archive/rust-experimental/](https://github.com/ziteh/zfs-remote-backup/tree/feat/rust/archive/rust-experimental) - Exploratory Rust implementation (`feat/rust` branch).
 
 ## License
 
