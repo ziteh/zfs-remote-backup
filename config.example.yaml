@@ -1,13 +1,13 @@
 # yaml-language-server: $schema=./zrb-config-schema.json
 
-base_dir: /mnt/p1/ds1/bk/
-age_public_key: age1ed9kad8ddqpjnt7k50tmxu8ngxte5ghmwsse7ckt6kdtvc7afpkqlj5ddk
+base_dir: /mnt/pool/dataset/zrb/
+age_public_key: age1xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 s3:
   enabled: true
   bucket: my-backup-bucket
   region: us-east-1
   prefix: zfs-backups/
-  endpoint: ""
+  endpoint: "" # Leave empty for AWS S3, or specify custom endpoint for S3-compatible services
   storage_class:
     manifest: STANDARD
     backup_data:
@@ -20,6 +20,6 @@ s3:
 tasks:
   - name: example_task
     description: Example backup task
-    pool: p1
+    pool: pool
     dataset: temp
     enabled: true
