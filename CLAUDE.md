@@ -78,3 +78,12 @@ Located in `{base_dir}/run/{pool}/{dataset}/`:
 
 - Go: standard gofmt
 - All source files in cmd/zrb/ as package main
+
+## Code Development Principles
+
+- This project adheres to **Semantic Versioning** and **Conventional Commits**.
+- Prefer **Fail Fast** over Defensive Programming.
+- Prefer **explicit** over implicit defaults or fallbacks.
+- No need to provide too many documents (.md), or even any at all.
+- No need to provide too many comments.
+- This project has not yet released an official version (>=1.0.0); modifications do not require backward compatibility.

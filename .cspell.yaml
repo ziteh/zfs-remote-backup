@@ -19,11 +19,14 @@ words:
   - cpuid
   - eventstream
   - filippo
+  - genkey
+  - gofmt
   - gopkg
   - imds
   - klauspost
   - softprops
   - ssooidc
+  - taskname
   - urfave
   - zeebo
   - zfsbackup
