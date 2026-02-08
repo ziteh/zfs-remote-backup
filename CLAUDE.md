@@ -1,77 +1,64 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Claude Code when working with this repository.
 
 ## Project Overview
 
-ZFS Remote Backup (zrb) backs up ZFS snapshots to remote object storage (AWS S3, MinIO) using full, differential, and incremental backup strategies. The project has two implementations:
-
-- **Go implementation** (`simple_backup/`) - Primary/modern, actively developed on `feat/simple_backup` branch
-- **Python implementation** (`app/`) - Legacy
+ZFS Remote Backup (zrb) is a Go application for backing up ZFS snapshots to remote object storage (AWS S3, MinIO) using full, differential, and incremental backup strategies.
 
 ## Commands
 
-### Go (simple_backup/)
+### Build
 
 ```bash
-# Build
-cd simple_backup && go build -o build/zrb_simple
-./build.sh                              # Cross-compile + transfer to VM
-
-# Run
-./zrb_simple genkey                     # Generate age encryption key pair
-./zrb_simple backup --config config.yaml --task taskname --level 0
-./zrb_simple snapshot --config config.yaml --task taskname
+make build              # Build for current platform
+make build-linux        # Build for Linux amd64
+make build-all          # Build for all platforms
 ```
 
-### Python (app/)
+### Run
 
 ```bash
-uv sync --all-extras --dev              # Install dependencies
-uv run pytest tests                     # Run all tests
-uv run pytest tests/test_integration_task.py  # Run specific test
-uv run ruff check .                     # Lint
-uv run ruff format .                    # Format
+./build/zrb genkey
+./build/zrb backup --config config.yaml --task taskname --level 0
+./build/zrb snapshot --config config.yaml --task taskname
+./build/zrb list --config config.yaml --task taskname --source s3
+./build/zrb restore --config config.yaml --task taskname --level 0 --target pool/dataset --private-key /path/to/key
 ```
 
-### VM Testing
+### Testing
 
 ```bash
-vm/tests/01_prepare_env.sh              # Setup test data
-vm/tests/02_l0_backup.sh                # Level 0 (full) backup
-vm/tests/03_l1_to_l4.sh                 # Incremental backups
-vm/tests/04_restore.sh                  # Restore test
-vm/tests/05_interrupt_recover.sh        # Resumable upload test
+make test                               # Unit tests
+vm/tests/01_prepare_env.sh              # VM setup
+vm/tests/02_l0_backup.sh                # Integration test
 ```
 
 ## Architecture
 
-### Go Backup Pipeline
+### Directory Structure
+
+```
+cmd/zrb/              - Go source files (all package main)
+docs/                 - Documentation
+vm/                   - VM testing infrastructure
+build/                - Build outputs
+archive/              - Legacy implementations (Python, Rust)
+```
+
+### Pipeline
 
 ```
 Config → Lock → List Snapshots → ZFS Send (BLAKE3 hash) → Split 3GB chunks
-→ Worker Pool (4 concurrent): Encrypt (age) → SHA256 → S3 Upload
+→ Worker Pool (4 concurrent): Encrypt (age) → BLAKE3 → S3 Upload
 → Manifest → Update Last Backup Reference → Cleanup → Unlock
 ```
-
-Key files in `simple_backup/`:
-- `main.go` - CLI entry point, backup orchestration
-- `zfs.go` - ZFS send with TeeReader for BLAKE3, split, hold/release
-- `remote.go` - S3 backend with resumable multipart uploads
-- `config.go` - Config, BackupManifest, BackupState structs
-- `crypto.go` - Age encryption, SHA256
-- `lock.go` - File-based PID locking per pool/dataset
-
-### Python Pipeline (app/)
-
-8-stage pipeline managed by `backup_manager.py`:
-`snapshot_export → snapshot_test → split → compress → encrypt → upload → verify → clear → done`
 
 ### State Files
 
 Located in `{base_dir}/run/{pool}/{dataset}/`:
 - `backup_state.yaml` - Resumable state (parts_processed, parts_uploaded)
-- `last_backup_manifest.yaml` - Tracks last backup per level for incremental chains
+- `last_backup_manifest.yaml` - Tracks last backup per level
 - `zrb.lock` - Concurrency lock with PID
 
 ### S3 Structure
@@ -85,11 +72,9 @@ Located in `{base_dir}/run/{pool}/{dataset}/`:
 ## Tech Stack
 
 - **Go 1.23**: age, aws-sdk-go-v2, urfave/cli, blake3
-- **Python ≥3.12**: boto3, pyrage, msgpack, loguru, zstd
-- **Package Manager**: UV (Python)
-- **Testing**: pytest, Multipass VMs
+- **Testing**: Multipass VMs, shell scripts
 
 ## Code Style
 
-- Python: ruff (line-length 100, 4-space indent, double quotes)
 - Go: standard gofmt
+- All source files in cmd/zrb/ as package main
