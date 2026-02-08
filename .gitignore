@@ -1,24 +1,39 @@
-# Python-generated files
+# Go
+*.exe
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+/build/
+vendor/
+
+# Python (archived)
 __pycache__/
 *.py[oc]
-build/
 dist/
 wheels/
 *.egg-info
-
-# Virtual environments
-.venv
 
 # Keys
 *.key
 *.pem
 *.asc
+*.age
 
-# Project
+# Config
+.env
 .env.local
+*.log
 
-# Rust
+# Rust (archived)
 target/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
 
 # OS
 .DS_Store
