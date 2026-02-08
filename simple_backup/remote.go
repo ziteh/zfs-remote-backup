@@ -17,7 +17,7 @@ import (
 
 // RemoteBackend defines the interface for remote storage
 type RemoteBackend interface {
-	Upload(ctx context.Context, localPath, remotePath, sha256Hash string, backupLevel int16) error
+	Upload(ctx context.Context, localPath, remotePath, checksumHash string, backupLevel int16) error
 	VerifyCredentials(ctx context.Context) error
 }
 
@@ -119,7 +119,7 @@ func (s *S3Backend) Download(ctx context.Context, remotePath, localPath string) 
 	return nil
 }
 
-func (s *S3Backend) Upload(ctx context.Context, localPath, remotePath, sha256Hash string, backupLevel int16) error {
+func (s *S3Backend) Upload(ctx context.Context, localPath, remotePath, checksumHash string, backupLevel int16) error {
 	var levelTag string
 	if backupLevel < 0 {
 		levelTag = "manifest"
@@ -136,7 +136,7 @@ func (s *S3Backend) Upload(ctx context.Context, localPath, remotePath, sha256Has
 	key := filepath.ToSlash(filepath.Join(s.prefix, remotePath))
 
 	// Use manager.Uploader which automatically:
-	// - Handles multipart uploads for files > PartSize (64MB)
+	// - Handles multipart uploads for files > PartSize
 	// - Uploads parts concurrently (5 goroutines by default)
 	// - Calculates CRC32 checksums automatically
 	input := &s3.PutObjectInput{

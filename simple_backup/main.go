@@ -581,17 +581,17 @@ func runBackup(ctx context.Context, configPath string, backupLevel int16, taskNa
 				}
 
 				slog.Info("Encryption and upload started for part file", "partFile", partFile)
-				sha256Hash, encryptedFile, err := processPartFile(partFile, recipient)
+				blake3Hash, encryptedFile, err := processPartFile(partFile, recipient)
 				if err != nil {
 					slog.Error("Failed to process part file", "partFile", partFile, "error", err)
 					errChan <- err
 					continue
 				}
-				slog.Debug("Part file encrypted", "partFile", partFile, "encryptedFile", encryptedFile, "sha256", sha256Hash)
+				slog.Debug("Part file encrypted", "partFile", partFile, "encryptedFile", encryptedFile, "blake3", blake3Hash)
 
 				partInfo := PartInfo{
 					Index:      index,
-					SHA256Hash: sha256Hash,
+					Blake3Hash: blake3Hash,
 				}
 				partInfoChan <- partInfo
 
@@ -617,7 +617,7 @@ func runBackup(ctx context.Context, configPath string, backupLevel int16, taskNa
 					if !state.PartsUploaded[index] {
 						slog.Info("Uploading part file to remote backend", "encryptedFile", encryptedFile)
 						remotePath := filepath.Join("data", task.Pool, task.Dataset, taskDirName, filepath.Base(encryptedFile))
-						if err := backend.Upload(ctx, encryptedFile, remotePath, sha256Hash, backupLevel); err != nil {
+						if err := backend.Upload(ctx, encryptedFile, remotePath, blake3Hash, backupLevel); err != nil {
 							slog.Error("Failed to upload part file", "encryptedFile", encryptedFile, "error", err)
 							errChan <- err
 							continue
@@ -703,13 +703,13 @@ func runBackup(ctx context.Context, configPath string, backupLevel int16, taskNa
 
 	// Upload manifest to S3
 	if manifestBackend != nil && !state.ManifestUploaded {
-		manifestSHA256, err := calculateSHA256(manifestPath)
+		manifestBlake3, err := calculateBLAKE3(manifestPath)
 		if err != nil {
-			slog.Error("Failed to calculate manifest SHA256", "error", err)
+			slog.Error("Failed to calculate manifest BLAKE3", "error", err)
 			os.Exit(1)
 		}
 		remotePath := filepath.Join("manifests", task.Pool, task.Dataset, taskDirName, "task_manifest.yaml")
-		if err := manifestBackend.Upload(ctx, manifestPath, remotePath, manifestSHA256, -1); err != nil {
+		if err := manifestBackend.Upload(ctx, manifestPath, remotePath, manifestBlake3, -1); err != nil {
 			slog.Error("Failed to upload manifest", "error", err)
 			os.Exit(1)
 		}
@@ -755,15 +755,15 @@ func runBackup(ctx context.Context, configPath string, backupLevel int16, taskNa
 
 	// Upload last backup manifest to S3
 	if manifestBackend != nil {
-		if lastSHA, err := calculateSHA256(lastPath); err == nil {
+		if lastBlake3, err := calculateBLAKE3(lastPath); err == nil {
 			remoteLastPath := filepath.Join("manifests", task.Pool, task.Dataset, "last_backup_manifest.yaml")
-			if err := manifestBackend.Upload(ctx, lastPath, remoteLastPath, lastSHA, -1); err != nil {
+			if err := manifestBackend.Upload(ctx, lastPath, remoteLastPath, lastBlake3, -1); err != nil {
 				slog.Warn("Failed to upload last backup manifest", "error", err)
 			} else {
 				slog.Info("Uploaded last backup manifest to remote", "remote", remoteLastPath)
 			}
 		} else {
-			slog.Warn("Failed to calculate SHA256 for last backup manifest", "error", err)
+			slog.Warn("Failed to calculate BLAKE3 for last backup manifest", "error", err)
 		}
 	}
 
@@ -1194,7 +1194,7 @@ func restoreBackup(ctx context.Context, configPath, taskName string, level int16
 
 		// Decrypt and verify
 		slog.Info("Decrypting and verifying part", "part", partInfo.Index)
-		if err := decryptPartAndVerify(encryptedFile, decryptedFile, partInfo.SHA256Hash, identity); err != nil {
+		if err := decryptPartAndVerify(encryptedFile, decryptedFile, partInfo.Blake3Hash, identity); err != nil {
 			return fmt.Errorf("failed to decrypt/verify part %s: %w", partInfo.Index, err)
 		}
 

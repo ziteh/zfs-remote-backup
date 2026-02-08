@@ -39,7 +39,7 @@ type S3Config struct {
 
 type PartInfo struct {
 	Index      string `yaml:"index"`
-	SHA256Hash string `yaml:"sha256_hash"`
+	Blake3Hash string `yaml:"blake3_hash"`
 }
 
 type SystemInfo struct {

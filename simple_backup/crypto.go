@@ -1,16 +1,16 @@
 package main
 
 import (
-	"crypto/sha256"
 	"fmt"
 	"io"
 	"log/slog"
 	"os"
 
 	"filippo.io/age"
+	"github.com/zeebo/blake3"
 )
 
-// processPartFile encrypts a snapshot part, calculates SHA256, and removes the original
+// processPartFile encrypts a snapshot part, calculates BLAKE3, and removes the original
 func processPartFile(partFile string, recipient age.Recipient) (string, string, error) {
 	slog.Info("Processing part file", "partFile", partFile)
 
@@ -21,12 +21,12 @@ func processPartFile(partFile string, recipient age.Recipient) (string, string, 
 	}
 	slog.Info("Encrypted to", "encryptedFile", encryptedFile)
 
-	// SHA-256 hash
-	sha256Hash, err := calculateSHA256(encryptedFile)
+	// BLAKE3 hash
+	blake3Hash, err := calculateBLAKE3OfFile(encryptedFile)
 	if err != nil {
-		return "", "", fmt.Errorf("SHA-256 hash failed: %w", err)
+		return "", "", fmt.Errorf("BLAKE3 hash failed: %w", err)
 	}
-	slog.Info("SHA-256", "hash", sha256Hash)
+	slog.Info("BLAKE3", "hash", blake3Hash)
 
 	// Delete original file
 	if err := os.Remove(partFile); err != nil {
@@ -34,7 +34,7 @@ func processPartFile(partFile string, recipient age.Recipient) (string, string, 
 	}
 	slog.Info("Removed original file", "partFile", partFile)
 
-	return sha256Hash, encryptedFile, nil
+	return blake3Hash, encryptedFile, nil
 }
 
 // encryptWithAge encrypts a file using age encryption
@@ -67,15 +67,15 @@ func encryptWithAge(inputFile, outputFile string, recipient age.Recipient) error
 	return nil
 }
 
-// calculateSHA256 computes the SHA256 hash of a file
-func calculateSHA256(filename string) (string, error) {
+// calculateBLAKE3OfFile computes the BLAKE3 hash of a file
+func calculateBLAKE3OfFile(filename string) (string, error) {
 	f, err := os.Open(filename)
 	if err != nil {
 		return "", err
 	}
 	defer f.Close()
 
-	hasher := sha256.New()
+	hasher := blake3.New()
 	if _, err := io.Copy(hasher, f); err != nil {
 		return "", err
 	}
@@ -109,20 +109,20 @@ func decryptWithAge(inputFile, outputFile string, identity age.Identity) error {
 	return nil
 }
 
-// decryptPartAndVerify decrypts an encrypted part file and verifies its SHA256
-func decryptPartAndVerify(encryptedFile, outputFile, expectedSHA256 string, identity age.Identity) error {
+// decryptPartAndVerify decrypts an encrypted part file and verifies its BLAKE3 hash
+func decryptPartAndVerify(encryptedFile, outputFile, expectedBlake3 string, identity age.Identity) error {
 	slog.Info("Decrypting part file", "encryptedFile", encryptedFile)
 
-	// Verify SHA256 before decryption
-	actualSHA256, err := calculateSHA256(encryptedFile)
+	// Verify BLAKE3 before decryption
+	actualBlake3, err := calculateBLAKE3OfFile(encryptedFile)
 	if err != nil {
-		return fmt.Errorf("failed to calculate SHA256: %w", err)
+		return fmt.Errorf("failed to calculate BLAKE3: %w", err)
 	}
 
-	if actualSHA256 != expectedSHA256 {
-		return fmt.Errorf("SHA256 mismatch: expected %s, got %s", expectedSHA256, actualSHA256)
+	if actualBlake3 != expectedBlake3 {
+		return fmt.Errorf("BLAKE3 mismatch: expected %s, got %s", expectedBlake3, actualBlake3)
 	}
-	slog.Info("SHA256 verified", "hash", actualSHA256)
+	slog.Info("BLAKE3 verified", "hash", actualBlake3)
 
 	// Decrypt
 	if err := decryptWithAge(encryptedFile, outputFile, identity); err != nil {
