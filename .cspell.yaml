@@ -1,0 +1,29 @@
+version: "0.2"
+language: en
+caseSensitive: false
+allowCompoundWords: false
+useGitignore: true
+ignorePaths:
+  - "**/{cspell.*,cSpell.*,.cspell.*,cspell.config.*}"
+  - "**/node_modules/**"
+  - "**/build/**"
+  - "**/dist/**"
+  - "**/.vscode/**"
+  - pnpm-lock.yaml
+  - package-lock.json
+  - "*.svg"
+  - .devcontainer/devcontainer.json
+  - go.sum
+words:
+  - configsources
+  - cpuid
+  - eventstream
+  - filippo
+  - gopkg
+  - imds
+  - klauspost
+  - softprops
+  - ssooidc
+  - urfave
+  - zeebo
+  - zite
