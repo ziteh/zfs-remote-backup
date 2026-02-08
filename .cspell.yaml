@@ -21,6 +21,7 @@ words:
   - filippo
   - genkey
   - gofmt
+  - golangci
   - gopkg
   - hpke
   - imds

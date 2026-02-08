@@ -1,0 +1,7 @@
+version: "2"
+formatters:
+  enable:
+    - gofumpt
+    - goimports
+linters:
+  default: fast
