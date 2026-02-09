@@ -1,4 +1,4 @@
-.PHONY: build test test-unit test-e2e test-coverage clean install build-all
+.PHONY: build test test-unit test-e2e test-e2e-vm test-all test-coverage clean install build-all build-vm
 
 BINARY_NAME=zrb
 BUILD_DIR=build
@@ -25,6 +25,15 @@ test-unit:
 test-e2e:
 	@echo "Running E2E tests..."
 	@go test -v ./tests/e2e/
+
+build-vm:
+	GOOS=linux GOARCH=arm64 go build -ldflags="$(LDFLAGS)" -o $(BUILD_DIR)/$(BINARY_NAME)_linux_arm64 ./cmd/zrb
+
+test-e2e-vm: build-vm
+	@echo "Running E2E VM tests..."
+	@go test -v -tags e2e_vm -timeout 30m ./tests/e2e/
+
+test-all: test-unit test-e2e test-e2e-vm
 
 test-coverage:
 	@echo "Generating coverage report..."
