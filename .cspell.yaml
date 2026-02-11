@@ -17,6 +17,7 @@ ignorePaths:
 words:
   - configsources
   - cpuid
+  - cpus
   - eventstream
   - filippo
   - genkey
@@ -25,7 +26,11 @@ words:
   - gopkg
   - hpke
   - imds
+  - keygen
   - klauspost
+  - mybucket
+  - myminio
+  - NOFILE
   - softprops
   - ssooidc
   - stretchr
@@ -33,4 +38,5 @@ words:
   - urfave
   - zeebo
   - zfsbackup
+  - zfsutils
   - zite
