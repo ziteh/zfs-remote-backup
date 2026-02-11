@@ -107,6 +107,11 @@ multipass exec "$VM_NAME" -- bash -c '
 multipass exec "$VM_NAME" -- /usr/local/bin/mc alias set myminio http://127.0.0.1:9000 admin password
 multipass exec "$VM_NAME" -- /usr/local/bin/mc mb myminio/mybucket
 
+# Setup ZFS zpool with file-backed vdev
+echo "--- Setting up ZFS zpool ---"
+multipass exec "$VM_NAME" -- sudo dd if=/dev/zero of=/home/$VM_USER/zfs.img bs=1M count=512
+multipass exec "$VM_NAME" -- sudo zpool create testpool /home/$VM_USER/zfs.img
+
 multipass stop "$VM_NAME"
 multipass snapshot "$VM_NAME" --name "initial"
 multipass start "$VM_NAME"
