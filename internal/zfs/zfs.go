@@ -66,26 +66,33 @@ func SendAndSplit(targetSnapshot, parentSnapshot, exportDir string) (string, err
 		}
 	}()
 
-	zfsStdout, err := zfsCmd.StdoutPipe()
+	pr, pw, err := os.Pipe()
 	if err != nil {
-		slog.Error("Failed to get zfs stdout", "error", err)
-		return "", fmt.Errorf("failed to get zfs stdout: %w", err)
+		return "", fmt.Errorf("failed to create pipe: %w", err)
 	}
+	zfsCmd.Stdout = pw
 
 	hasher := blake3.New()
-	splitCmd.Stdin = io.TeeReader(zfsStdout, hasher)
+	splitCmd.Stdin = io.TeeReader(pr, hasher)
 
 	if err := splitCmd.Start(); err != nil {
+		pw.Close()
+		pr.Close()
 		slog.Error("Failed to start split command", "error", err)
 		return "", fmt.Errorf("failed to start split: %w", err)
 	}
 
 	if err := zfsCmd.Start(); err != nil {
+		pw.Close()
+		pr.Close()
 		_ = splitCmd.Process.Kill()
 		_ = splitCmd.Wait()
 		slog.Error("Failed to start zfs command", "error", err)
 		return "", fmt.Errorf("failed to start zfs: %w", err)
 	}
+
+	// Close our copy of the write end so split gets EOF when zfs exits.
+	pw.Close()
 
 	var wg sync.WaitGroup
 	errChan := make(chan error, 2)
@@ -115,6 +122,7 @@ func SendAndSplit(targetSnapshot, parentSnapshot, exportDir string) (string, err
 	}()
 
 	wg.Wait()
+	pr.Close()
 	close(errChan)
 
 	var errs []error

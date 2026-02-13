@@ -139,6 +139,16 @@ func buildAndTransfer(t *testing.T, v *vm) {
 	v.mustExecSudo(t, "chmod +x "+remoteBin)
 }
 
+// extractJSON extracts a JSON object from mixed output (slog lines + JSON).
+func extractJSON(output string) string {
+	start := strings.Index(output, "{")
+	end := strings.LastIndex(output, "}")
+	if start >= 0 && end > start {
+		return output[start : end+1]
+	}
+	return output
+}
+
 func s3Config(baseDir, taskName, pool, dataset, agePublicKey string) string {
 	return fmt.Sprintf(`base_dir: %s
 age_public_key: %s

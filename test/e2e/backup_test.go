@@ -47,8 +47,9 @@ func TestBackupToMinIO(t *testing.T) {
 			if strings.HasPrefix(line, "Public key:") {
 				agePublicKey = strings.TrimSpace(strings.TrimPrefix(line, "Public key:"))
 			}
-			if strings.HasPrefix(line, "AGE-SECRET-KEY-") {
-				v.writeFile(t, keyPath, line)
+			if strings.HasPrefix(line, "Private key:") {
+				privateKey := strings.TrimSpace(strings.TrimPrefix(line, "Private key:"))
+				v.writeFile(t, keyPath, privateKey)
 			}
 		}
 
