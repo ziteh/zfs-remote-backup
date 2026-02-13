@@ -2,6 +2,7 @@ package logging
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"os"
 )
@@ -44,14 +45,14 @@ func (m *multiHandler) WithGroup(name string) slog.Handler {
 	return &multiHandler{handlers: hs}
 }
 
-func NewLogger(filename string) (*slog.Logger, *os.File) {
+func NewLogger(filename string) (*slog.Logger, *os.File, error) {
 	file, err := os.OpenFile(
 		filename,
 		os.O_CREATE|os.O_APPEND|os.O_WRONLY,
 		0644,
 	)
 	if err != nil {
-		panic(err)
+		return nil, nil, fmt.Errorf("failed to open log file: %w", err)
 	}
 
 	jsonHandler := slog.NewJSONHandler(file, &slog.HandlerOptions{
@@ -69,5 +70,5 @@ func NewLogger(filename string) (*slog.Logger, *os.File) {
 		},
 	}
 
-	return slog.New(handler), file
+	return slog.New(handler), file, nil
 }

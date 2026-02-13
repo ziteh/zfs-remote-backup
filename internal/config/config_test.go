@@ -3,7 +3,9 @@ package config
 import (
 	"testing"
 
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestS3RetryAttempts(t *testing.T) {
@@ -53,6 +55,97 @@ func TestS3RetryAttempts(t *testing.T) {
 			assert.Equal(t, tt.want, got)
 		})
 	}
+}
+
+func TestValidate(t *testing.T) {
+	validConfig := func() *Config {
+		return &Config{
+			BaseDir:      "/tmp/zrb",
+			AgePublicKey: "age1ql3z7hjy54pw3hyww5ayyfg7zqgvc7w3j2elw8zmrj2kg5sfn9aqmcac8p",
+			Tasks: []Task{
+				{Name: "t1", Pool: "p1", Dataset: "d1", Enabled: true},
+			},
+		}
+	}
+
+	t.Run("valid config", func(t *testing.T) {
+		require.NoError(t, validConfig().Validate())
+	})
+
+	t.Run("empty base_dir", func(t *testing.T) {
+		cfg := validConfig()
+		cfg.BaseDir = ""
+		assert.ErrorContains(t, cfg.Validate(), "base_dir is required")
+	})
+
+	t.Run("empty age_public_key", func(t *testing.T) {
+		cfg := validConfig()
+		cfg.AgePublicKey = ""
+		assert.ErrorContains(t, cfg.Validate(), "age_public_key is required")
+	})
+
+	t.Run("invalid age_public_key prefix", func(t *testing.T) {
+		cfg := validConfig()
+		cfg.AgePublicKey = "invalid-key"
+		assert.ErrorContains(t, cfg.Validate(), "age_public_key must start with")
+	})
+
+	t.Run("no tasks", func(t *testing.T) {
+		cfg := validConfig()
+		cfg.Tasks = nil
+		assert.ErrorContains(t, cfg.Validate(), "at least one task")
+	})
+
+	t.Run("task missing name", func(t *testing.T) {
+		cfg := validConfig()
+		cfg.Tasks = []Task{{Pool: "p", Dataset: "d"}}
+		assert.ErrorContains(t, cfg.Validate(), "tasks[0].name is required")
+	})
+
+	t.Run("task missing pool", func(t *testing.T) {
+		cfg := validConfig()
+		cfg.Tasks = []Task{{Name: "t", Dataset: "d"}}
+		assert.ErrorContains(t, cfg.Validate(), "tasks[0].pool is required")
+	})
+
+	t.Run("task missing dataset", func(t *testing.T) {
+		cfg := validConfig()
+		cfg.Tasks = []Task{{Name: "t", Pool: "p"}}
+		assert.ErrorContains(t, cfg.Validate(), "tasks[0].dataset is required")
+	})
+
+	t.Run("s3 enabled without bucket", func(t *testing.T) {
+		cfg := validConfig()
+		cfg.S3.Enabled = true
+		cfg.S3.Region = "us-east-1"
+		cfg.S3.StorageClass.BackupData = []types.StorageClass{"STANDARD"}
+		assert.ErrorContains(t, cfg.Validate(), "s3.bucket is required")
+	})
+
+	t.Run("s3 enabled without region", func(t *testing.T) {
+		cfg := validConfig()
+		cfg.S3.Enabled = true
+		cfg.S3.Bucket = "my-bucket"
+		cfg.S3.StorageClass.BackupData = []types.StorageClass{"STANDARD"}
+		assert.ErrorContains(t, cfg.Validate(), "s3.region is required")
+	})
+
+	t.Run("s3 enabled without storage classes", func(t *testing.T) {
+		cfg := validConfig()
+		cfg.S3.Enabled = true
+		cfg.S3.Bucket = "my-bucket"
+		cfg.S3.Region = "us-east-1"
+		assert.ErrorContains(t, cfg.Validate(), "s3.storage_class.backup_data")
+	})
+
+	t.Run("valid s3 config", func(t *testing.T) {
+		cfg := validConfig()
+		cfg.S3.Enabled = true
+		cfg.S3.Bucket = "my-bucket"
+		cfg.S3.Region = "us-east-1"
+		cfg.S3.StorageClass.BackupData = []types.StorageClass{"STANDARD"}
+		require.NoError(t, cfg.Validate())
+	})
 }
 
 func TestFindTask(t *testing.T) {

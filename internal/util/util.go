@@ -48,7 +48,10 @@ func SetupLogging(logPath string) (*slog.Logger, *os.File, error) {
 		return nil, nil, fmt.Errorf("failed to create log directory: %w", err)
 	}
 
-	logger, logFile := logging.NewLogger(logPath)
+	logger, logFile, err := logging.NewLogger(logPath)
+	if err != nil {
+		return nil, nil, err
+	}
 
 	return logger, logFile, nil
 }

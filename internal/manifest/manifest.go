@@ -46,12 +46,20 @@ func GetSystemInfo() (SystemInfo, error) {
 	return info, nil
 }
 
+func atomicWrite(filename string, data []byte) error {
+	tmp := filename + ".tmp"
+	if err := os.WriteFile(tmp, data, 0o644); err != nil {
+		return err
+	}
+	return os.Rename(tmp, filename)
+}
+
 func Write(filename string, m *Backup) error {
 	data, err := yaml.Marshal(m)
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(filename, data, 0o644)
+	return atomicWrite(filename, data)
 }
 
 func Read(filename string) (*Backup, error) {
@@ -71,7 +79,7 @@ func WriteLast(filename string, last *Last) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(filename, data, 0o644)
+	return atomicWrite(filename, data)
 }
 
 func ReadLast(filename string) (*Last, error) {
@@ -91,7 +99,7 @@ func WriteState(filename string, state *State) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(filename, data, 0o644)
+	return atomicWrite(filename, data)
 }
 
 func ReadState(filename string) (*State, error) {

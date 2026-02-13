@@ -2,6 +2,7 @@ package backup
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -163,7 +164,7 @@ func Run(ctx context.Context, configPath string, backupLevel int16, taskName str
 	if state.Blake3Hash == "" {
 		slog.Info("Running zfs send and split", "targetSnapshot", targetSnapshot, "parentSnapshot", parentSnapshot)
 
-		blake3Hash, err = zfs.SendAndSplit(targetSnapshot, parentSnapshot, outputDir)
+		blake3Hash, err = zfs.SendAndSplit(ctx, targetSnapshot, parentSnapshot, outputDir)
 		if err != nil {
 			return fmt.Errorf("failed to run zfs send and split: %w", err)
 		}
@@ -339,22 +340,21 @@ func Run(ctx context.Context, configPath string, backupLevel int16, taskName str
 
 	currentLast.BackupLevels[backupLevel] = ref
 	if err := manifest.WriteLast(lastPath, &currentLast); err != nil {
-		slog.Warn("Failed to write last backup manifest", "error", err)
-	} else {
-		slog.Info("Last backup manifest written", "path", lastPath)
+		return fmt.Errorf("failed to write last backup manifest: %w", err)
 	}
+	slog.Info("Last backup manifest written", "path", lastPath)
 
 	if manifestBackend != nil {
-		if lastBlake3, err := crypto.BLAKE3File(lastPath); err == nil {
-			remoteLastPath := filepath.Join("manifests", task.Pool, task.Dataset, "last_backup_manifest.yaml")
-			if err := manifestBackend.Upload(ctx, lastPath, remoteLastPath, lastBlake3, -1); err != nil {
-				slog.Warn("Failed to upload last backup manifest", "error", err)
-			} else {
-				slog.Info("Uploaded last backup manifest to remote", "remote", remoteLastPath)
-			}
-		} else {
-			slog.Warn("Failed to calculate BLAKE3 for last backup manifest", "error", err)
+		lastBlake3, err := crypto.BLAKE3File(lastPath)
+		if err != nil {
+			return fmt.Errorf("failed to calculate BLAKE3 for last backup manifest: %w", err)
 		}
+
+		remoteLastPath := filepath.Join("manifests", task.Pool, task.Dataset, "last_backup_manifest.yaml")
+		if err := manifestBackend.Upload(ctx, lastPath, remoteLastPath, lastBlake3, -1); err != nil {
+			return fmt.Errorf("failed to upload last backup manifest: %w", err)
+		}
+		slog.Info("Uploaded last backup manifest to remote", "remote", remoteLastPath)
 	}
 
 	if backend != nil {
@@ -394,6 +394,7 @@ func processPartsWithWorkerPool(ctx context.Context, rawParts []string, state *m
 	numWorkers := 4
 
 	var wg sync.WaitGroup
+	var stateMu sync.Mutex
 
 	partInfoChan := make(chan manifest.PartInfo, len(rawParts))
 	errChan := make(chan error, len(rawParts))
@@ -416,7 +417,11 @@ func processPartsWithWorkerPool(ctx context.Context, rawParts []string, state *m
 				baseName := filepath.Base(partFile)
 				index := strings.TrimPrefix(baseName, "snapshot.part-")
 
-				if state.PartsProcessed[index] {
+				stateMu.Lock()
+				alreadyProcessed := state.PartsProcessed[index]
+				stateMu.Unlock()
+
+				if alreadyProcessed {
 					slog.Info("Skipping already processed part", "part", partFile)
 
 					continue
@@ -440,12 +445,13 @@ func processPartsWithWorkerPool(ctx context.Context, rawParts []string, state *m
 				}
 				partInfoChan <- partInfo
 
+				stateMu.Lock()
 				state.PartsProcessed[index] = true
 				state.LastUpdated = time.Now().Unix()
-
 				if err := manifest.WriteState(statePath, state); err != nil {
 					slog.Warn("Failed to save backup state", "error", err)
 				}
+				stateMu.Unlock()
 
 				if backend != nil {
 					if ctx.Err() != nil {
@@ -455,7 +461,11 @@ func processPartsWithWorkerPool(ctx context.Context, rawParts []string, state *m
 						return
 					}
 
-					if !state.PartsUploaded[index] {
+					stateMu.Lock()
+					alreadyUploaded := state.PartsUploaded[index]
+					stateMu.Unlock()
+
+					if !alreadyUploaded {
 						slog.Info("Uploading part file to remote backend", "encryptedFile", encryptedFile)
 
 						remotePath := filepath.Join("data", task.Pool, task.Dataset, taskDirName, filepath.Base(encryptedFile))
@@ -466,12 +476,13 @@ func processPartsWithWorkerPool(ctx context.Context, rawParts []string, state *m
 							continue
 						}
 
+						stateMu.Lock()
 						state.PartsUploaded[index] = true
 						state.LastUpdated = time.Now().Unix()
-
 						if err := manifest.WriteState(statePath, state); err != nil {
 							slog.Warn("Failed to save backup state", "error", err)
 						}
+						stateMu.Unlock()
 					} else {
 						slog.Info("Skipping already uploaded part", "encryptedFile", encryptedFile)
 					}
@@ -490,10 +501,12 @@ func processPartsWithWorkerPool(ctx context.Context, rawParts []string, state *m
 	close(partInfoChan)
 	close(errChan)
 
-	if len(errChan) > 0 {
-		err := <-errChan
-
-		return nil, fmt.Errorf("failed to process part files: %w", err)
+	var errs []error
+	for err := range errChan {
+		errs = append(errs, err)
+	}
+	if len(errs) > 0 {
+		return nil, fmt.Errorf("failed to process %d part(s): %w", len(errs), errors.Join(errs...))
 	}
 
 	for pi := range partInfoChan {

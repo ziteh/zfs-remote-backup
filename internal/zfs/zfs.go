@@ -17,8 +17,8 @@ import (
 )
 
 // SendAndSplit executes zfs send and splits the output into parts while computing BLAKE3 hash
-func SendAndSplit(targetSnapshot, parentSnapshot, exportDir string) (string, error) {
-	ctx, cancel := context.WithCancel(context.Background())
+func SendAndSplit(ctx context.Context, targetSnapshot, parentSnapshot, exportDir string) (string, error) {
+	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
 	outputPattern := filepath.Join(exportDir, "snapshot.part-")
