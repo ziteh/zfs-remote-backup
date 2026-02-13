@@ -80,7 +80,7 @@ func TestBackupToMinIO(t *testing.T) {
 		cfg := s3Config(testBaseDir, testTask, testPool, testDataset, agePublicKey)
 		v.writeFile(t, configPath, cfg)
 
-		out := v.mustExecWithS3(t, "sudo -E "+remoteBin+" backup --config "+configPath+" --task "+testTask+" --level 0")
+		out := v.mustZrbWithS3(t, "backup --config "+configPath+" --task "+testTask+" --level 0")
 		assert.Contains(t, out, "Backup completed", "backup did not complete successfully\noutput: %s", out)
 	})
 

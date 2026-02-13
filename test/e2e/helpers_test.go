@@ -33,32 +33,21 @@ func newVM() *vm {
 	return &vm{name: vmName}
 }
 
-func (v *vm) exec(command string) (string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+func (v *vm) execWithTimeout(command string, timeout time.Duration) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "multipass", "exec", v.name, "--", "bash", "-lc", command)
 	out, err := cmd.CombinedOutput()
 	return strings.TrimSpace(string(out)), err
 }
 
-func (v *vm) execLong(command string) (string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, "multipass", "exec", v.name, "--", "bash", "-lc", command)
-	out, err := cmd.CombinedOutput()
-	return strings.TrimSpace(string(out)), err
+func (v *vm) exec(command string) (string, error) {
+	return v.execWithTimeout(command, 2*time.Minute)
 }
 
 func (v *vm) mustExec(t *testing.T, command string) string {
 	t.Helper()
 	out, err := v.exec(command)
-	require.NoError(t, err, "command failed: %s\noutput: %s", command, out)
-	return out
-}
-
-func (v *vm) mustExecLong(t *testing.T, command string) string {
-	t.Helper()
-	out, err := v.execLong(command)
 	require.NoError(t, err, "command failed: %s\noutput: %s", command, out)
 	return out
 }
@@ -74,21 +63,10 @@ func (v *vm) mustExecSudo(t *testing.T, command string) string {
 	return out
 }
 
-func (v *vm) execWithS3(command string) (string, error) {
-	wrapped := fmt.Sprintf("AWS_ACCESS_KEY_ID=%s AWS_SECRET_ACCESS_KEY=%s %s",
-		minioAccessKey, minioSecretKey, command)
-	return v.execLong(wrapped)
-}
-
-func (v *vm) mustExecWithS3(t *testing.T, command string) string {
-	t.Helper()
-	out, err := v.execWithS3(command)
-	require.NoError(t, err, "S3 command failed: %s\noutput: %s", command, out)
-	return out
-}
-
 func (v *vm) zrbWithS3(args string) (string, error) {
-	return v.execWithS3("sudo -E " + remoteBin + " " + args)
+	command := fmt.Sprintf("AWS_ACCESS_KEY_ID=%s AWS_SECRET_ACCESS_KEY=%s sudo -E %s %s",
+		minioAccessKey, minioSecretKey, remoteBin, args)
+	return v.execWithTimeout(command, 5*time.Minute)
 }
 
 func (v *vm) mustZrbWithS3(t *testing.T, args string) string {
