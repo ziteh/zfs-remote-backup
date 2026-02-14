@@ -11,28 +11,26 @@ import (
 
 type Entry struct {
 	Pid       int    `yaml:"pid"`
-	Pool      string `yaml:"pool"`
-	Dataset   string `yaml:"dataset"`
 	StartedAt string `yaml:"started_at"`
 }
 
-func readLocks(path string) ([]Entry, error) {
-	if _, err := os.Stat(path); os.IsNotExist(err) {
-		return nil, nil
-	}
+func readLock(path string) (*Entry, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
 		return nil, err
 	}
-	var locks []Entry
-	if err := yaml.Unmarshal(data, &locks); err != nil {
+	var entry Entry
+	if err := yaml.Unmarshal(data, &entry); err != nil {
 		return nil, err
 	}
-	return locks, nil
+	return &entry, nil
 }
 
-func writeLocks(path string, locks []Entry) error {
-	data, err := yaml.Marshal(locks)
+func writeLock(path string, entry *Entry) error {
+	data, err := yaml.Marshal(entry)
 	if err != nil {
 		return err
 	}
@@ -54,63 +52,33 @@ func isProcessAlive(pid int) bool {
 	if err == syscall.ESRCH {
 		return false
 	}
-	// for EPERM and other errors assume process exists
 	return true
 }
 
-// Acquire tries to register a lock for pool+dataset in the YAML lock file.
 // Returns a release function which should be called (deferred) when work is done.
-func Acquire(lockPath, pool, dataset string) (func() error, error) {
-	pid := os.Getpid()
-
-	locks, err := readLocks(lockPath)
+func Acquire(lockPath string) (func() error, error) {
+	existing, err := readLock(lockPath)
 	if err != nil {
 		return nil, err
 	}
 
-	var kept []Entry
-	for _, l := range locks {
-		if l.Pool == pool && l.Dataset == dataset {
-			if isProcessAlive(l.Pid) {
-				return nil, fmt.Errorf("dataset %s/%s is already locked by pid %d (started %s)", pool, dataset, l.Pid, l.StartedAt)
-			}
-			// stale entry: skip it
-			continue
-		}
-		kept = append(kept, l)
+	if existing != nil && existing.Pid > 0 && isProcessAlive(existing.Pid) {
+		return nil, fmt.Errorf("already locked by pid %d (started %s)", existing.Pid, existing.StartedAt)
 	}
 
-	// append our entry
-	kept = append(kept, Entry{
-		Pid:       pid,
-		Pool:      pool,
-		Dataset:   dataset,
+	entry := &Entry{
+		Pid:       os.Getpid(),
 		StartedAt: time.Now().Format(time.RFC3339),
-	})
-
-	if err := writeLocks(lockPath, kept); err != nil {
+	}
+	if err := writeLock(lockPath, entry); err != nil {
 		return nil, err
 	}
 
 	release := func() error {
-		locks, err := readLocks(lockPath)
-		if err != nil {
+		if err := os.Remove(lockPath); err != nil && !os.IsNotExist(err) {
 			return err
 		}
-		var rem []Entry
-		for _, l := range locks {
-			if l.Pid == pid && l.Pool == pool && l.Dataset == dataset {
-				continue
-			}
-			rem = append(rem, l)
-		}
-		if len(rem) == 0 {
-			if err := os.Remove(lockPath); err != nil && !os.IsNotExist(err) {
-				return err
-			}
-			return nil
-		}
-		return writeLocks(lockPath, rem)
+		return nil
 	}
 
 	return release, nil

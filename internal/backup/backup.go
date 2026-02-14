@@ -78,7 +78,7 @@ func Run(ctx context.Context, configPath string, backupLevel int16, taskName str
 
 	// Acquire lock for the dataset
 	lockPath := filepath.Join(runDir, "zrb.lock")
-	releaseLock, err := lock.Acquire(lockPath, task.Pool, task.Dataset)
+	releaseLock, err := lock.Acquire(lockPath)
 	if err != nil {
 		return fmt.Errorf("failed to acquire lock: %w", err)
 	}
