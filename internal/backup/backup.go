@@ -255,6 +255,13 @@ func Run(ctx context.Context, configPath string, backupLevel int16, taskName str
 	})
 	slog.Info("All part files processed", "count", len(partInfos))
 
+	// Verify level 0 uploads via HeadObject
+	if backupLevel == 0 && backend != nil {
+		if err := verifyLevel0Parts(ctx, backend, partInfos, outputDir, task, taskDirName); err != nil {
+			return fmt.Errorf("level 0 verification failed: %w", err)
+		}
+	}
+
 	// Manifest management
 	var manifestPath string
 	if state.ManifestCreated {
@@ -529,4 +536,35 @@ func processPartsWithWorkerPool(
 	}
 
 	return partInfos, nil
+}
+
+func verifyLevel0Parts(ctx context.Context, backend remote.Backend, partInfos []manifest.PartInfo, outputDir string, task *config.Task, taskDirName string) error {
+	slog.Info("Verifying level 0 uploaded parts", "count", len(partInfos))
+
+	for _, pi := range partInfos {
+		ageFile := filepath.Join(outputDir, "snapshot.part-"+pi.Index+".age")
+
+		localInfo, err := os.Stat(ageFile)
+		if err != nil {
+			return fmt.Errorf("failed to stat local file %s: %w", ageFile, err)
+		}
+
+		remotePath := filepath.Join("data", task.Pool, task.Dataset, taskDirName, filepath.Base(ageFile))
+		obj, err := backend.Head(ctx, remotePath)
+		if err != nil {
+			return fmt.Errorf("verification failed for part %s: %w", pi.Index, err)
+		}
+
+		if obj.Size != localInfo.Size() {
+			return fmt.Errorf("size mismatch for part %s: local=%d remote=%d", pi.Index, localInfo.Size(), obj.Size)
+		}
+		if obj.Blake3 != pi.Blake3Hash {
+			return fmt.Errorf("BLAKE3 mismatch for part %s: expected=%s remote=%s", pi.Index, pi.Blake3Hash, obj.Blake3)
+		}
+
+		slog.Info("Part verified", "index", pi.Index, "size", obj.Size)
+	}
+
+	slog.Info("Level 0 verification passed")
+	return nil
 }

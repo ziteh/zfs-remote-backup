@@ -15,8 +15,14 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 )
 
+type ObjectInfo struct {
+	Size   int64
+	Blake3 string
+}
+
 type Backend interface {
 	Upload(ctx context.Context, localPath, remotePath, checksumHash string, backupLevel int16) error
+	Head(ctx context.Context, remotePath string) (*ObjectInfo, error)
 	VerifyCredentials(ctx context.Context) error
 }
 
@@ -129,6 +135,7 @@ func (s *S3) Upload(ctx context.Context, localPath, remotePath, checksumHash str
 		Body:         file,
 		StorageClass: s.storageClass,
 		Tagging:      aws.String("backup-level=" + levelTag),
+		Metadata:     map[string]string{"blake3": checksumHash},
 	}
 
 	_, err = s.uploader.Upload(ctx, input)
@@ -138,6 +145,27 @@ func (s *S3) Upload(ctx context.Context, localPath, remotePath, checksumHash str
 
 	slog.Info("Uploaded to S3", "bucket", s.bucket, "key", key, "storageClass", s.storageClass)
 	return nil
+}
+
+func (s *S3) Head(ctx context.Context, remotePath string) (*ObjectInfo, error) {
+	key := filepath.ToSlash(filepath.Join(s.prefix, remotePath))
+
+	output, err := s.client.HeadObject(ctx, &s3.HeadObjectInput{
+		Bucket: aws.String(s.bucket),
+		Key:    aws.String(key),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to head object %s: %w", key, err)
+	}
+
+	info := &ObjectInfo{}
+	if output.ContentLength != nil {
+		info.Size = *output.ContentLength
+	}
+	if output.Metadata != nil {
+		info.Blake3 = output.Metadata["blake3"]
+	}
+	return info, nil
 }
 
 func (s *S3) VerifyCredentials(ctx context.Context) error {
