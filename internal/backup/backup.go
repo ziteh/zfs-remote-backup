@@ -207,6 +207,11 @@ func Run(ctx context.Context, configPath string, backupLevel int16, taskName str
 		state.Blake3Hash = blake3Hash
 		state.PartsCompleted = make(map[string]string)
 		state.LastUpdated = time.Now().Unix()
+
+		// Persist initial state to allow resuming if backup is interrupted during part processing
+		if err := manifest.WriteState(statePath, state); err != nil {
+			return fmt.Errorf("failed to persist initial backup state: %w", err)
+		}
 	}
 
 	// Initialize remote backend
