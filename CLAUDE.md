@@ -78,6 +78,8 @@ Located in `{base_dir}/run/{pool}/{dataset}/`:
 
 ### S3 Structure
 
+Specifically designed to utilize **AWS S3 Glacier Deep Archive** for data storage. Due to its inherent characteristics, to avoid incurring substantial costs, data cannot be accessed immediately after upload. Additionally, API operation fees are quite high, necessitating the minimization of API calls.
+
 ```
 {bucket}/{prefix}/
 ├── data/{pool}/{dataset}/{level}/{date}/    # Encrypted backup parts

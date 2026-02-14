@@ -44,15 +44,14 @@ type Last struct {
 }
 
 type State struct {
-	TaskName         string          `yaml:"task_name"`
-	BackupLevel      int16           `yaml:"backup_level"`
-	TargetSnapshot   string          `yaml:"target_snapshot"`
-	ParentSnapshot   string          `yaml:"parent_snapshot"`
-	OutputDir        string          `yaml:"output_dir"`
-	Blake3Hash       string          `yaml:"blake3_hash"`
-	PartsProcessed   map[string]bool `yaml:"parts_processed"`
-	PartsUploaded    map[string]bool `yaml:"parts_uploaded"`
-	ManifestCreated  bool            `yaml:"manifest_created"`
-	ManifestUploaded bool            `yaml:"manifest_uploaded"`
-	LastUpdated      int64           `yaml:"last_updated"`
+	TaskName         string            `yaml:"task_name"`
+	BackupLevel      int16             `yaml:"backup_level"`
+	TargetSnapshot   string            `yaml:"target_snapshot"`
+	ParentSnapshot   string            `yaml:"parent_snapshot"`
+	OutputDir        string            `yaml:"output_dir"`
+	Blake3Hash       string            `yaml:"blake3_hash"`
+	PartsCompleted   map[string]string `yaml:"parts_completed"`
+	ManifestCreated  bool              `yaml:"manifest_created"`
+	ManifestUploaded bool              `yaml:"manifest_uploaded"`
+	LastUpdated      int64             `yaml:"last_updated"`
 }

@@ -171,20 +171,23 @@ func Run(ctx context.Context, configPath string, backupLevel int16, taskName str
 		slog.Info("Using stored BLAKE3 hash", "hash", blake3Hash)
 	}
 
-	// Find snapshot part files
-	parts, err := filepath.Glob(filepath.Join(outputDir, "snapshot.part-*"))
+	// Find snapshot part files (both raw and encrypted) and build unique index list
+	allParts, err := filepath.Glob(filepath.Join(outputDir, "snapshot.part-*"))
 	if err != nil {
 		return fmt.Errorf("failed to find snapshot parts: %w", err)
 	}
-
-	// Filter unencrypted parts
-	var rawParts []string
-	for _, part := range parts {
-		if !strings.HasSuffix(part, ".age") {
-			rawParts = append(rawParts, part)
-		}
+	partIndexSet := make(map[string]bool)
+	for _, part := range allParts {
+		baseName := filepath.Base(part)
+		baseName = strings.TrimSuffix(baseName, ".age")
+		index := strings.TrimPrefix(baseName, "snapshot.part-")
+		partIndexSet[index] = true
 	}
-	sort.Strings(rawParts)
+	var partIndices []string
+	for idx := range partIndexSet {
+		partIndices = append(partIndices, idx)
+	}
+	sort.Strings(partIndices)
 
 	// Load encryption public key
 	recipient, err := age.ParseX25519Recipient(cfg.AgePublicKey)
@@ -200,8 +203,7 @@ func Run(ctx context.Context, configPath string, backupLevel int16, taskName str
 		state.ParentSnapshot = parentSnapshot
 		state.OutputDir = outputDir
 		state.Blake3Hash = blake3Hash
-		state.PartsProcessed = make(map[string]bool)
-		state.PartsUploaded = make(map[string]bool)
+		state.PartsCompleted = make(map[string]string)
 		state.LastUpdated = time.Now().Unix()
 	}
 
@@ -232,7 +234,7 @@ func Run(ctx context.Context, configPath string, backupLevel int16, taskName str
 	}
 
 	// Process parts
-	partInfos, err := processPartsWithWorkerPool(ctx, rawParts, state, statePath, recipient, backend, task, taskDirName, backupLevel)
+	partInfos, err := processPartsWithWorkerPool(ctx, partIndices, outputDir, state, statePath, recipient, backend, task, taskDirName, backupLevel)
 	if err != nil {
 		return err
 	}
@@ -380,17 +382,26 @@ func loadOrCreateState(statePath, taskName string, backupLevel int16) (*manifest
 	return &manifest.State{}, nil
 }
 
-func processPartsWithWorkerPool(ctx context.Context, rawParts []string, state *manifest.State, statePath string, recipient age.Recipient, backend remote.Backend, task *config.Task, taskDirName string, backupLevel int16) ([]manifest.PartInfo, error) {
+func processPartsWithWorkerPool(
+	ctx context.Context,
+	partIndices []string,
+	outputDir string,
+	state *manifest.State,
+	statePath string,
+	recipient age.Recipient,
+	backend remote.Backend,
+	task *config.Task,
+	taskDirName string,
+	backupLevel int16,
+) ([]manifest.PartInfo, error) {
+	numWorkers := 4 // TODO: make workers configurable
 	var partInfos []manifest.PartInfo
-
-	numWorkers := 4
-
 	var wg sync.WaitGroup
 	var stateMu sync.Mutex
 
-	partInfoChan := make(chan manifest.PartInfo, len(rawParts))
-	errChan := make(chan error, len(rawParts))
-	taskChan := make(chan string, len(rawParts))
+	partInfoChan := make(chan manifest.PartInfo, len(partIndices))
+	errChan := make(chan error, len(partIndices))
+	taskChan := make(chan string, len(partIndices))
 
 	for range numWorkers {
 		wg.Add(1)
@@ -398,7 +409,7 @@ func processPartsWithWorkerPool(ctx context.Context, rawParts []string, state *m
 		go func() {
 			defer wg.Done()
 
-			for partFile := range taskChan {
+			for index := range taskChan {
 				if ctx.Err() != nil {
 					slog.Warn("Worker stopping due to context cancellation")
 					errChan <- ctx.Err()
@@ -406,44 +417,47 @@ func processPartsWithWorkerPool(ctx context.Context, rawParts []string, state *m
 					return
 				}
 
-				baseName := filepath.Base(partFile)
-				index := strings.TrimPrefix(baseName, "snapshot.part-")
-
 				stateMu.Lock()
-				alreadyProcessed := state.PartsProcessed[index]
+				completedHash := state.PartsCompleted[index]
 				stateMu.Unlock()
 
-				if alreadyProcessed {
-					slog.Info("Skipping already processed part", "part", partFile)
+				if completedHash != "" {
+					slog.Info("Skipping already completed part", "index", index)
+					partInfoChan <- manifest.PartInfo{Index: index, Blake3Hash: completedHash}
 
 					continue
 				}
 
-				slog.Info("Encryption and upload started for part file", "partFile", partFile)
+				rawFile := filepath.Join(outputDir, "snapshot.part-"+index)
+				ageFile := rawFile + ".age"
 
-				blake3Hash, encryptedFile, err := crypto.ProcessPart(partFile, recipient)
-				if err != nil {
-					slog.Error("Failed to process part file", "partFile", partFile, "error", err)
-					errChan <- err
+				var blake3Hash string
 
-					continue
+				if _, err := os.Stat(ageFile); err == nil {
+					slog.Info("Found existing encrypted file, skipping encryption", "ageFile", ageFile)
+
+					var err error
+					blake3Hash, err = crypto.BLAKE3File(ageFile)
+					if err != nil {
+						slog.Error("Failed to hash encrypted file", "ageFile", ageFile, "error", err)
+						errChan <- err
+
+						continue
+					}
+
+					os.Remove(rawFile)
+				} else {
+					slog.Info("Encrypting part file", "rawFile", rawFile)
+
+					var err error
+					blake3Hash, _, err = crypto.ProcessPart(rawFile, recipient)
+					if err != nil {
+						slog.Error("Failed to process part file", "rawFile", rawFile, "error", err)
+						errChan <- err
+
+						continue
+					}
 				}
-
-				slog.Debug("Part file encrypted", "partFile", partFile, "encryptedFile", encryptedFile, "blake3", blake3Hash)
-
-				partInfo := manifest.PartInfo{
-					Index:      index,
-					Blake3Hash: blake3Hash,
-				}
-				partInfoChan <- partInfo
-
-				stateMu.Lock()
-				state.PartsProcessed[index] = true
-				state.LastUpdated = time.Now().Unix()
-				if err := manifest.WriteState(statePath, state); err != nil {
-					slog.Warn("Failed to save backup state", "error", err)
-				}
-				stateMu.Unlock()
 
 				if backend != nil {
 					if ctx.Err() != nil {
@@ -453,38 +467,32 @@ func processPartsWithWorkerPool(ctx context.Context, rawParts []string, state *m
 						return
 					}
 
-					stateMu.Lock()
-					alreadyUploaded := state.PartsUploaded[index]
-					stateMu.Unlock()
+					slog.Info("Uploading part file to remote backend", "ageFile", ageFile)
 
-					if !alreadyUploaded {
-						slog.Info("Uploading part file to remote backend", "encryptedFile", encryptedFile)
+					remotePath := filepath.Join("data", task.Pool, task.Dataset, taskDirName, filepath.Base(ageFile))
+					if err := backend.Upload(ctx, ageFile, remotePath, blake3Hash, backupLevel); err != nil {
+						slog.Error("Failed to upload part file", "ageFile", ageFile, "error", err)
+						errChan <- err
 
-						remotePath := filepath.Join("data", task.Pool, task.Dataset, taskDirName, filepath.Base(encryptedFile))
-						if err := backend.Upload(ctx, encryptedFile, remotePath, blake3Hash, backupLevel); err != nil {
-							slog.Error("Failed to upload part file", "encryptedFile", encryptedFile, "error", err)
-							errChan <- err
-
-							continue
-						}
-
-						stateMu.Lock()
-						state.PartsUploaded[index] = true
-						state.LastUpdated = time.Now().Unix()
-						if err := manifest.WriteState(statePath, state); err != nil {
-							slog.Warn("Failed to save backup state", "error", err)
-						}
-						stateMu.Unlock()
-					} else {
-						slog.Info("Skipping already uploaded part", "encryptedFile", encryptedFile)
+						continue
 					}
 				}
+
+				stateMu.Lock()
+				state.PartsCompleted[index] = blake3Hash
+				state.LastUpdated = time.Now().Unix()
+				if err := manifest.WriteState(statePath, state); err != nil {
+					slog.Warn("Failed to save backup state", "error", err)
+				}
+				stateMu.Unlock()
+
+				partInfoChan <- manifest.PartInfo{Index: index, Blake3Hash: blake3Hash}
 			}
 		}()
 	}
 
-	for _, partFile := range rawParts {
-		taskChan <- partFile
+	for _, index := range partIndices {
+		taskChan <- index
 	}
 
 	close(taskChan)
