@@ -26,89 +26,85 @@ func Run(ctx context.Context, configPath string, backupLevel int16, taskName str
 	if backupLevel < 0 {
 		return fmt.Errorf("backup level must be non-negative")
 	}
-
 	if taskName == "" {
 		return fmt.Errorf("task name must be specified")
 	}
-
 	if ctx.Err() != nil {
 		return fmt.Errorf("backup cancelled before start: %w", ctx.Err())
 	}
 
+	// Load configuration
 	cfg, err := config.Load(configPath)
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
 
+	// Find the backup task
 	task, err := cfg.FindTask(taskName)
 	if err != nil {
 		return err
 	}
-
 	if !task.Enabled {
 		return fmt.Errorf("backup task is disabled: %s", taskName)
 	}
 
+	// Ensure base directory
 	if err := os.MkdirAll(cfg.BaseDir, 0o755); err != nil {
 		return fmt.Errorf("failed to create base directory: %w", err)
 	}
 
+	// Setup logging
 	logPath := filepath.Join(util.LogDir(cfg.BaseDir, task.Pool, task.Dataset), fmt.Sprintf("%s.log", time.Now().Format("2006-01-02")))
-
 	logger, logFile, err := util.SetupLogging(logPath)
 	if err != nil {
 		return fmt.Errorf("failed to setup logging: %w", err)
 	}
-
 	defer logFile.Close()
 	slog.SetDefault(logger)
 	slog.Info("Backup started", "level", backupLevel, "pool", task.Pool, "dataset", task.Dataset)
 
+	// Ensure run directory
 	runDir := util.RunDir(cfg.BaseDir, task.Pool, task.Dataset)
 	if err := os.MkdirAll(runDir, 0o755); err != nil {
 		return fmt.Errorf("failed to create run directory: %w", err)
 	}
 
+	// Backup state management
 	statePath := filepath.Join(runDir, "backup_state.yaml")
-
 	state, err := loadOrCreateState(statePath, taskName, backupLevel)
 	if err != nil {
 		return fmt.Errorf("failed to load backup state: %w", err)
 	}
 
+	// Acquire lock for the dataset
 	lockPath := filepath.Join(runDir, "zrb.lock")
-
 	releaseLock, err := lock.Acquire(lockPath, task.Pool, task.Dataset)
 	if err != nil {
 		return fmt.Errorf("failed to acquire lock: %w", err)
 	}
-
 	defer func() {
 		if err := releaseLock(); err != nil {
 			slog.Warn("Failed to release lock", "error", err)
 		}
 	}()
 
+	// List snapshots and determine target snapshot for backup
 	snapshots, err := zfs.ListSnapshots(task.Pool, task.Dataset, "zrb_level"+fmt.Sprint(backupLevel))
 	if err != nil {
 		return fmt.Errorf("failed to list snapshots: %w", err)
 	}
-
 	if len(snapshots) == 0 {
 		return fmt.Errorf("no snapshots found for pool=%s dataset=%s", task.Pool, task.Dataset)
 	}
-
 	latestSnapshot := snapshots[0]
-
-	targetSnapshot := latestSnapshot
+	targetSnapshot := latestSnapshot // TODO: combine target and latest snapshot logic?
 	if state.TargetSnapshot != "" {
 		targetSnapshot = state.TargetSnapshot
 	}
-
 	slog.Info("Latest snapshot found", "latestSnapshot", latestSnapshot, "count", len(snapshots))
 
+	// Determine task directory name
 	taskDirName := util.TaskDirName(backupLevel, time.Now())
-
 	if state.OutputDir != "" {
 		outputDirParent := filepath.Dir(state.OutputDir)
 		levelDir := filepath.Base(outputDirParent)
@@ -116,8 +112,8 @@ func Run(ctx context.Context, configPath string, backupLevel int16, taskName str
 		taskDirName = filepath.Join(levelDir, dateDir)
 	}
 
+	// Ensure output directory
 	outputDir := filepath.Join(cfg.BaseDir, "task", task.Pool, task.Dataset, taskDirName)
-
 	if state.OutputDir == "" {
 		if _, err := os.Stat(outputDir); err == nil {
 			slog.Info("Cleaning up existing output directory", "path", outputDir)
@@ -127,30 +123,30 @@ func Run(ctx context.Context, configPath string, backupLevel int16, taskName str
 			}
 		}
 	}
-
 	if err := os.MkdirAll(outputDir, 0o755); err != nil {
 		return fmt.Errorf("failed to create output directory: %w", err)
 	}
 
+	// Determine parent snapshot
 	lastPath := filepath.Join(cfg.BaseDir, "run", task.Pool, task.Dataset, "last_backup_manifest.yaml")
-
 	var parentSnapshot string
-
 	var last *manifest.Last
 	if backupLevel > 0 {
+		// For level >= 1, we need to find the parent snapshot from the last backup manifest
 		last, err = manifest.ReadLast(lastPath)
 		if err != nil || last == nil {
 			return fmt.Errorf("failed to determine base for backup: %w", err)
 		}
 
 		if last.BackupLevels != nil && int16(len(last.BackupLevels)) >= backupLevel {
+			// We have a previous backup at the required level
 			parentSnapshot = last.BackupLevels[backupLevel-1].Snapshot
 			slog.Info("Found parent snapshot from last backup manifest", "parentSnapshot", parentSnapshot)
 		} else {
 			return fmt.Errorf("failed to determine base for backup, no previous backups found")
 		}
 	}
-
+	// Resume from state if parent snapshot was already determined in a previous run
 	if state.ParentSnapshot != "" {
 		parentSnapshot = state.ParentSnapshot
 	}
@@ -159,42 +155,44 @@ func Run(ctx context.Context, configPath string, backupLevel int16, taskName str
 		return fmt.Errorf("backup cancelled before ZFS send: %w", ctx.Err())
 	}
 
+	// Check zfs send and split already done
 	var blake3Hash string
-
 	if state.Blake3Hash == "" {
+		// Need to run zfs send and split
 		slog.Info("Running zfs send and split", "targetSnapshot", targetSnapshot, "parentSnapshot", parentSnapshot)
-
 		blake3Hash, err = zfs.SendAndSplit(ctx, targetSnapshot, parentSnapshot, outputDir)
 		if err != nil {
 			return fmt.Errorf("failed to run zfs send and split: %w", err)
 		}
-
 		slog.Info("Snapshot BLAKE3", "hash", blake3Hash)
 	} else {
+		// Skip zfs send and split, resume from existing state
 		blake3Hash = state.Blake3Hash
 		slog.Info("Using stored BLAKE3 hash", "hash", blake3Hash)
 	}
 
+	// Find snapshot part files
 	parts, err := filepath.Glob(filepath.Join(outputDir, "snapshot.part-*"))
 	if err != nil {
 		return fmt.Errorf("failed to find snapshot parts: %w", err)
 	}
 
+	// Filter unencrypted parts
 	var rawParts []string
-
 	for _, part := range parts {
 		if !strings.HasSuffix(part, ".age") {
 			rawParts = append(rawParts, part)
 		}
 	}
-
 	sort.Strings(rawParts)
 
+	// Load encryption public key
 	recipient, err := age.ParseX25519Recipient(cfg.AgePublicKey)
 	if err != nil {
 		return fmt.Errorf("failed to parse age public key: %w", err)
 	}
 
+	// Update state
 	if state.TaskName == "" {
 		state.TaskName = taskName
 		state.BackupLevel = backupLevel
@@ -207,23 +205,19 @@ func Run(ctx context.Context, configPath string, backupLevel int16, taskName str
 		state.LastUpdated = time.Now().Unix()
 	}
 
+	// Initialize remote backend
 	var backend remote.Backend
-
 	var manifestBackend remote.Backend
-
 	if cfg.S3.Enabled {
 		maxRetryAttempts := cfg.S3RetryAttempts()
 		storageClass := cfg.S3.StorageClass.BackupData[backupLevel]
-
 		s3Backend, err := remote.NewS3(ctx, cfg.S3.Bucket, cfg.S3.Region, cfg.S3.Prefix, cfg.S3.Endpoint, storageClass, maxRetryAttempts)
 		if err != nil {
 			return fmt.Errorf("failed to initialize S3 backend: %w", err)
 		}
 
 		backend = s3Backend
-
 		slog.Info("S3 backend initialized", "bucket", cfg.S3.Bucket, "region", cfg.S3.Region, "prefix", cfg.S3.Prefix)
-
 		if err := backend.VerifyCredentials(ctx); err != nil {
 			return fmt.Errorf("AWS credentials verification failed: %w", err)
 		}
@@ -234,20 +228,22 @@ func Run(ctx context.Context, configPath string, backupLevel int16, taskName str
 		}
 
 		manifestBackend = mBackend
-
 		slog.Info("S3 backend for manifests initialized")
 	}
 
+	// Process parts
 	partInfos, err := processPartsWithWorkerPool(ctx, rawParts, state, statePath, recipient, backend, task, taskDirName, backupLevel)
 	if err != nil {
 		return err
 	}
-
 	slog.Info("All part files processed", "count", len(partInfos))
 
+	// Manifest management
 	var manifestPath string
-
-	if !state.ManifestCreated {
+	if state.ManifestCreated {
+		manifestPath = filepath.Join(outputDir, "task_manifest.yaml")
+	} else {
+		// Create and write manifest
 		systemInfo, err := manifest.GetSystemInfo()
 		if err != nil {
 			slog.Warn("Failed to get system info", "error", err)
@@ -280,7 +276,6 @@ func Run(ctx context.Context, configPath string, backupLevel int16, taskName str
 		if err := manifest.Write(manifestPath, &m); err != nil {
 			return fmt.Errorf("failed to write manifest: %w", err)
 		}
-
 		slog.Info("Manifest written", "path", manifestPath)
 
 		state.ManifestCreated = true
@@ -289,10 +284,9 @@ func Run(ctx context.Context, configPath string, backupLevel int16, taskName str
 		if err := manifest.WriteState(statePath, state); err != nil {
 			slog.Warn("Failed to save backup state", "error", err)
 		}
-	} else {
-		manifestPath = filepath.Join(outputDir, "task_manifest.yaml")
 	}
 
+	// Upload manifest
 	if manifestBackend != nil && !state.ManifestUploaded {
 		manifestBlake3, err := crypto.BLAKE3File(manifestPath)
 		if err != nil {
@@ -303,7 +297,6 @@ func Run(ctx context.Context, configPath string, backupLevel int16, taskName str
 		if err := manifestBackend.Upload(ctx, manifestPath, remotePath, manifestBlake3, -1); err != nil {
 			return fmt.Errorf("failed to upload manifest: %w", err)
 		}
-
 		slog.Info("Manifest upload completed")
 
 		state.ManifestUploaded = true
@@ -314,11 +307,11 @@ func Run(ctx context.Context, configPath string, backupLevel int16, taskName str
 		}
 	}
 
+	// Update last successful backup manifest
 	var currentLast manifest.Last
 	if existing, err := manifest.ReadLast(lastPath); err == nil && existing != nil {
 		currentLast = *existing
 	}
-
 	currentLast.Pool = task.Pool
 	currentLast.Dataset = task.Dataset
 	ref := &manifest.Ref{
@@ -328,7 +321,6 @@ func Run(ctx context.Context, configPath string, backupLevel int16, taskName str
 		Blake3Hash: blake3Hash,
 		S3Path:     filepath.Join(task.Pool, task.Dataset, taskDirName),
 	}
-
 	if currentLast.BackupLevels == nil {
 		currentLast.BackupLevels = make([]*manifest.Ref, int(backupLevel)+1)
 	} else if len(currentLast.BackupLevels) <= int(backupLevel) {
@@ -337,13 +329,13 @@ func Run(ctx context.Context, configPath string, backupLevel int16, taskName str
 			currentLast.BackupLevels = append(currentLast.BackupLevels, nil)
 		}
 	}
-
 	currentLast.BackupLevels[backupLevel] = ref
 	if err := manifest.WriteLast(lastPath, &currentLast); err != nil {
 		return fmt.Errorf("failed to write last backup manifest: %w", err)
 	}
 	slog.Info("Last backup manifest written", "path", lastPath)
 
+	// Upload last backup manifest
 	if manifestBackend != nil {
 		lastBlake3, err := crypto.BLAKE3File(lastPath)
 		if err != nil {
@@ -365,12 +357,12 @@ func Run(ctx context.Context, configPath string, backupLevel int16, taskName str
 		}
 	}
 
+	// Cleanup state file
 	if err := os.Remove(statePath); err != nil {
 		slog.Warn("Failed to remove backup state file", "error", err)
 	}
 
 	slog.Info("Backup completed successfully!")
-
 	return nil
 }
 
