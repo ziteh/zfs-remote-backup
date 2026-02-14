@@ -96,12 +96,11 @@ func Run(ctx context.Context, configPath string, backupLevel int16, taskName str
 	if len(snapshots) == 0 {
 		return fmt.Errorf("no snapshots found for pool=%s dataset=%s", task.Pool, task.Dataset)
 	}
-	latestSnapshot := snapshots[0]
-	targetSnapshot := latestSnapshot // TODO: combine target and latest snapshot logic?
+	targetSnapshot := snapshots[0]
 	if state.TargetSnapshot != "" {
 		targetSnapshot = state.TargetSnapshot
 	}
-	slog.Info("Latest snapshot found", "latestSnapshot", latestSnapshot, "count", len(snapshots))
+	slog.Info("Target snapshot determined", "targetSnapshot", targetSnapshot, "count", len(snapshots))
 
 	// Determine task directory name
 	taskDirName := util.TaskDirName(backupLevel, time.Now())
@@ -188,6 +187,9 @@ func Run(ctx context.Context, configPath string, backupLevel int16, taskName str
 		partIndices = append(partIndices, idx)
 	}
 	sort.Strings(partIndices)
+	if len(partIndices) == 0 {
+		return fmt.Errorf("no snapshot parts found in %s", outputDir)
+	}
 
 	// Load encryption public key
 	recipient, err := age.ParseX25519Recipient(cfg.AgePublicKey)
@@ -212,6 +214,9 @@ func Run(ctx context.Context, configPath string, backupLevel int16, taskName str
 	var manifestBackend remote.Backend
 	if cfg.S3.Enabled {
 		maxRetryAttempts := cfg.S3RetryAttempts()
+		if int(backupLevel) >= len(cfg.S3.StorageClass.BackupData) {
+			return fmt.Errorf("backup level %d exceeds configured storage classes (only %d defined)", backupLevel, len(cfg.S3.StorageClass.BackupData))
+		}
 		storageClass := cfg.S3.StorageClass.BackupData[backupLevel]
 		s3Backend, err := remote.NewS3(ctx, cfg.S3.Bucket, cfg.S3.Region, cfg.S3.Prefix, cfg.S3.Endpoint, storageClass, maxRetryAttempts)
 		if err != nil {
@@ -238,6 +243,11 @@ func Run(ctx context.Context, configPath string, backupLevel int16, taskName str
 	if err != nil {
 		return err
 	}
+
+	// Sort part infos by index to ensure correct order in manifest
+	sort.Slice(partInfos, func(i, j int) bool {
+		return partInfos[i].Index < partInfos[j].Index
+	})
 	slog.Info("All part files processed", "count", len(partInfos))
 
 	// Manifest management
@@ -318,7 +328,7 @@ func Run(ctx context.Context, configPath string, backupLevel int16, taskName str
 	currentLast.Dataset = task.Dataset
 	ref := &manifest.Ref{
 		Datetime:   time.Now().Unix(),
-		Snapshot:   latestSnapshot,
+		Snapshot:   targetSnapshot,
 		Manifest:   manifestPath,
 		Blake3Hash: blake3Hash,
 		S3Path:     filepath.Join(task.Pool, task.Dataset, taskDirName),
