@@ -245,6 +245,10 @@ func Run(ctx context.Context, configPath, taskName string, level int16, target, 
 		return fmt.Errorf("ZFS receive failed: %w", err)
 	}
 
+	if err := verifyRestoredSnapshot(target, m.TargetSnapshot); err != nil {
+		return fmt.Errorf("restore verification failed: %w", err)
+	}
+
 	slog.Info("Restore completed successfully!")
 
 	return nil
@@ -291,6 +295,20 @@ func mergeParts(parts []string, outputFile string) error {
 		part.Close()
 	}
 
+	return nil
+}
+
+func verifyRestoredSnapshot(target, originalSnapshot string) error {
+	parts := strings.SplitN(originalSnapshot, "@", 2)
+	if len(parts) != 2 {
+		return fmt.Errorf("cannot parse snapshot name from: %s", originalSnapshot)
+	}
+	expected := target + "@" + parts[1]
+	cmd := exec.Command("zfs", "list", "-H", "-o", "name", "-t", "snapshot", expected)
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("snapshot %s not found after restore: %w", expected, err)
+	}
+	slog.Info("Restored snapshot verified", "snapshot", expected)
 	return nil
 }
 
