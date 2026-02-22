@@ -26,7 +26,7 @@ make build
 Generate key:
 
 ```bash
-./build/zrb genkey
+zrb genkey
 ```
 
 ```
@@ -70,7 +70,7 @@ tasks:
 Validate configuration and connectivity:
 
 ```bash
-./build/zrb check --config config.yaml
+zrb check --config config.yaml
 ```
 
 `zrb` does not automatically create ZFS snapshots. You must create ZFS snapshots using another method (such as TrueNAS's Periodic Snapshot Tasks, or `zrb snapshot`). Note that only snapshots with the `zrb_level<N>` prefix in the name will be used by `zrb` (e.g., `zrb_level0_2026-01-01_00-00` used for level 0 backup task).
@@ -80,13 +80,13 @@ Validate configuration and connectivity:
 Level 0 (Full backup):
 
 ```bash
-./build/zrb backup --config config.yaml --task example_task --level 0
+zrb backup --config config.yaml --task example_task --level 0
 ```
 
 Level 1 (based on level 0):
 
 ```bash
-./build/zrb backup --config config.yaml --task example_task --level 1
+zrb backup --config config.yaml --task example_task --level 1
 ```
 
 ### List
@@ -95,10 +95,10 @@ List available backups
 
 ```bash
 # List all backup on S3
-./build/zrb list --config config.yaml --task example_task --source s3
+zrb list --config config.yaml --task example_task --source s3
 
 # Only level 1
-./build/zrb list --config config.yaml --task example_task --source s3 --level 1
+zrb list --config config.yaml --task example_task --source s3 --level 1
 ```
 
 ## Legacy Implementations
