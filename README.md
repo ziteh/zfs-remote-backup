@@ -11,13 +11,94 @@ Features:
 
 ## Usage
 
+Build:
+
 ```bash
 make build
 ```
 
 ```bash
-# Full backup (Level 0)
-./build/zrb backup --config /path/to/config.yaml --task example_task --level 0
+./build/zrb --help
+```
+
+### Prepare
+
+Generate key:
+
+```bash
+./build/zrb genkey
+```
+
+```
+Public key:  age1xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+Public key saved to:  zrb_public.key
+Private key saved to: zrb_private.key
+
+IMPORTANT: Keep the private key secure and do not share it with anyone.
+If you lose the private key, your backups cannot be restored.
+```
+
+Create `config.yaml`:
+
+```yaml
+# config.yaml
+base_dir: /var/lib/zrb/
+age_public_key: age1xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx  # Enter the public key above
+s3:
+  enabled: true
+  bucket: my-backup-bucket
+  region: us-east-1
+  prefix: zfs-backups/
+  endpoint: "" # Leave empty for AWS S3, or specify custom endpoint for S3-compatible services
+  storage_class:
+    manifest: STANDARD
+    backup_data:
+      - DEEP_ARCHIVE # Level 0 (full backup)
+      - DEEP_ARCHIVE # Level 1
+      - DEEP_ARCHIVE # Level 2
+      - GLACIER      # Level 3
+  retry:
+    max_attempts: 8
+tasks:
+  - name: example_task
+    description: Example backup task
+    pool: pool
+    dataset: temp
+    enabled: true
+```
+
+Validate configuration and connectivity:
+
+```bash
+./build/zrb check --config config.yaml
+```
+
+`zrb` does not automatically create ZFS snapshots. You must create ZFS snapshots using another method (such as TrueNAS's Periodic Snapshot Tasks, or `zrb snapshot`). Note that only snapshots with the `zrb_level<N>` prefix in the name will be used by `zrb` (e.g., `zrb_level0_2026-01-01_00-00` used for level 0 backup task).
+
+### Backup
+
+Level 0 (Full backup):
+
+```bash
+./build/zrb backup --config config.yaml --task example_task --level 0
+```
+
+Level 1 (based on level 0):
+
+```bash
+./build/zrb backup --config config.yaml --task example_task --level 1
+```
+
+### List
+
+List available backups
+
+```bash
+# List all backup on S3
+./build/zrb list --config config.yaml --task example_task --source s3
+
+# Only level 1
+./build/zrb list --config config.yaml --task example_task --source s3 --level 1
 ```
 
 ## Legacy Implementations
