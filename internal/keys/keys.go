@@ -13,8 +13,17 @@ import (
 	"filippo.io/age"
 )
 
+const (
+	privateKeyFile = "zrb_private.key"
+	publicKeyFile  = "zrb_public.key"
+)
+
 func Generate(_ context.Context) error {
-	fmt.Println("Generating age public and private key pair...")
+	for _, f := range []string{privateKeyFile, publicKeyFile} {
+		if _, err := os.Stat(f); err == nil {
+			return fmt.Errorf("%s already exists, remove it first", f)
+		}
+	}
 
 	identity, err := age.GenerateX25519Identity()
 	if err != nil {
@@ -24,10 +33,20 @@ func Generate(_ context.Context) error {
 	publicKey := identity.Recipient().String()
 	privateKey := identity.String()
 
-	fmt.Println("\n=== Age Key Pair Generated ===")
+	if err := os.WriteFile(privateKeyFile, []byte(privateKey+"\n"), 0o600); err != nil {
+		return fmt.Errorf("failed to write private key: %w", err)
+	}
+
+	if err := os.WriteFile(publicKeyFile, []byte(publicKey+"\n"), 0o644); err != nil {
+		os.Remove(privateKeyFile)
+		return fmt.Errorf("failed to write public key: %w", err)
+	}
+
 	fmt.Printf("Public key:  %s\n", publicKey)
-	fmt.Printf("Private key: %s\n", privateKey)
-	fmt.Println("\n!! Keep your private key secure !!")
+	fmt.Printf("Public key saved to:  %s\n", publicKeyFile)
+	fmt.Printf("Private key saved to: %s\n", privateKeyFile)
+	fmt.Printf("\nIMPORTANT: Keep the private key secure and do not share it with anyone.\n")
+	fmt.Printf("If you lose the private key, your backups cannot be restored.\n")
 
 	return nil
 }
