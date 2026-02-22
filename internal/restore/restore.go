@@ -14,6 +14,7 @@ import (
 	"zrb/internal/crypto"
 	"zrb/internal/manifest"
 	"zrb/internal/remote"
+	"zrb/internal/zfs"
 
 	"filippo.io/age"
 )
@@ -34,6 +35,11 @@ func Run(ctx context.Context, configPath, taskName string, level int16, target, 
 	targetParts := strings.Split(target, "/")
 	if len(targetParts) < 2 {
 		return fmt.Errorf("target must be in format pool/dataset, got: %s", target)
+	}
+
+	// Pre-flight: verify the target pool exists before downloading anything
+	if err := zfs.CheckPoolExists(targetParts[0]); err != nil {
+		return fmt.Errorf("pre-flight check: %w", err)
 	}
 
 	privateKeyData, err := os.ReadFile(privateKeyPath)

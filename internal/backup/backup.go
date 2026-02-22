@@ -48,6 +48,11 @@ func Run(ctx context.Context, configPath string, backupLevel int16, taskName str
 		return fmt.Errorf("backup task is disabled: %s", taskName)
 	}
 
+	// Pre-flight: verify ZFS dataset is accessible before doing any work
+	if err := zfs.CheckDatasetExists(task.Pool, task.Dataset); err != nil {
+		return fmt.Errorf("pre-flight check: %w", err)
+	}
+
 	// Ensure base directory
 	if err := os.MkdirAll(cfg.BaseDir, 0o755); err != nil {
 		return fmt.Errorf("failed to create base directory: %w", err)

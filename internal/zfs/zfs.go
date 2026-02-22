@@ -195,6 +195,22 @@ func ListSnapshots(pool, dataset, prefix string) ([]string, error) {
 	return snapshots, nil
 }
 
+func CheckDatasetExists(pool, dataset string) error {
+	cmd := exec.Command("zfs", "list", "-H", "-o", "name", fmt.Sprintf("%s/%s", pool, dataset))
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("ZFS dataset %s/%s not found or not accessible", pool, dataset)
+	}
+	return nil
+}
+
+func CheckPoolExists(pool string) error {
+	cmd := exec.Command("zfs", "list", "-H", "-o", "name", pool)
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("ZFS pool %s not found or not accessible", pool)
+	}
+	return nil
+}
+
 func CreateSnapshot(pool, dataset, prefix string) error {
 	date := time.Now().Format("2006-01-02_15-04")
 	fullSnapshotName := fmt.Sprintf("%s/%s@%s_%s", pool, dataset, prefix, date)
