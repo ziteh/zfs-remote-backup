@@ -8,6 +8,7 @@ import (
 	"os/signal"
 	"syscall"
 	"zrb/internal/backup"
+	"zrb/internal/check"
 	"zrb/internal/keys"
 	"zrb/internal/list"
 	"zrb/internal/restore"
@@ -22,6 +23,20 @@ func main() {
 		Usage:   "ZFS Remote Backup",
 		Version: "0.1.0",
 		Commands: []*cli.Command{
+			{
+				Name:  "check",
+				Usage: "Validate configuration and connectivity",
+				Flags: []cli.Flag{
+					&cli.StringFlag{
+						Name:  "config",
+						Usage: "path to configuration yaml file",
+						Value: "zrb_config.yaml",
+					},
+				},
+				Action: func(ctx context.Context, cmd *cli.Command) error {
+					return check.Run(ctx, cmd.String("config"))
+				},
+			},
 			{
 				Name:  "genkey",
 				Usage: "Generate public and private key pair",
