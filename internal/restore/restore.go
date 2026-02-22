@@ -167,7 +167,7 @@ func Run(ctx context.Context, configPath, taskName string, level int16, target, 
 		return nil
 	}
 
-	tempDir := filepath.Join(os.TempDir(), fmt.Sprintf("zrb_restore_%s_%d_%d", taskName, level, time.Now().Unix()))
+	tempDir := filepath.Join(cfg.BaseDir, "tmp", fmt.Sprintf("restore_%s_%d_%d", taskName, level, time.Now().Unix()))
 	if err := os.MkdirAll(tempDir, 0o755); err != nil {
 		return fmt.Errorf("failed to create temp directory: %w", err)
 	}
