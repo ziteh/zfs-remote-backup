@@ -137,7 +137,7 @@ func Run(ctx context.Context, configPath string, backupLevel int16, taskName str
 			return fmt.Errorf("failed to determine base for backup: %w", err)
 		}
 
-		if last.BackupLevels != nil && int16(len(last.BackupLevels)) >= backupLevel {
+		if last.BackupLevels != nil && int16(len(last.BackupLevels)) >= backupLevel && last.BackupLevels[backupLevel-1] != nil {
 			// We have a previous backup at the required level
 			parentSnapshot = last.BackupLevels[backupLevel-1].Snapshot
 			slog.Info("Found parent snapshot from last backup manifest", "parentSnapshot", parentSnapshot)
@@ -255,7 +255,7 @@ func Run(ctx context.Context, configPath string, backupLevel int16, taskName str
 	})
 	slog.Info("All part files processed", "count", len(partInfos))
 
-	// Verify level 0 uploads via HeadObject
+	// Verify uploads via HeadObject (only level 0)
 	if backupLevel == 0 && backend != nil {
 		if err := verifyLevel0Parts(ctx, backend, partInfos, outputDir, task, taskDirName); err != nil {
 			return fmt.Errorf("level 0 verification failed: %w", err)
