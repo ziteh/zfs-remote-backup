@@ -18,7 +18,7 @@ import (
 	"filippo.io/age"
 )
 
-func Run(ctx context.Context, configPath, taskName string, level int16, target, privateKeyPath, source string, dryRun bool) error {
+func Run(ctx context.Context, configPath, taskName string, level int16, target, privateKeyPath, source string, dryRun, force bool) error {
 	slog.Info("Restore started", "task", taskName, "level", level, "target", target, "source", source, "dryRun", dryRun)
 
 	cfg, err := config.Load(configPath)
@@ -241,7 +241,7 @@ func Run(ctx context.Context, configPath, taskName string, level int16, target, 
 
 	slog.Info("Executing ZFS receive", "target", target)
 
-	if err := executeZfsReceive(mergedFile, target); err != nil {
+	if err := executeZfsReceive(mergedFile, target, force); err != nil {
 		return fmt.Errorf("ZFS receive failed: %w", err)
 	}
 
@@ -294,19 +294,25 @@ func mergeParts(parts []string, outputFile string) error {
 	return nil
 }
 
-func executeZfsReceive(snapshotFile, target string) error {
+func executeZfsReceive(snapshotFile, target string, force bool) error {
 	file, err := os.Open(snapshotFile)
 	if err != nil {
 		return fmt.Errorf("failed to open snapshot file: %w", err)
 	}
 	defer file.Close()
 
-	cmd := exec.Command("zfs", "receive", "-F", target)
+	args := []string{"receive"}
+	if force {
+		args = append(args, "-F")
+	}
+	args = append(args, target)
+
+	cmd := exec.Command("zfs", args...)
 	cmd.Stdin = file
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
-	slog.Info("Running zfs receive", "target", target)
+	slog.Info("Running zfs receive", "target", target, "force", force)
 
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("zfs receive command failed: %w", err)

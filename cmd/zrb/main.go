@@ -164,11 +164,16 @@ func main() {
 						Usage: "Show what would be restored without actually restoring",
 						Value: false,
 					},
+					&cli.BoolFlag{
+						Name:  "force",
+						Usage: "Pass -F to zfs receive, discarding uncommitted changes in the target dataset",
+						Value: false,
+					},
 				},
 				Action: func(ctx context.Context, cmd *cli.Command) error {
 					return restore.Run(ctx, cmd.String("config"), cmd.String("task"),
 						cmd.Int16("level"), cmd.String("target"), cmd.String("private-key"),
-						cmd.String("source"), cmd.Bool("dry-run"))
+						cmd.String("source"), cmd.Bool("dry-run"), cmd.Bool("force"))
 				},
 			},
 		},
