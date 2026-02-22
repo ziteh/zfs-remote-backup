@@ -503,10 +503,15 @@ func processPartsWithWorkerPool(
 				stateMu.Lock()
 				state.PartsCompleted[index] = blake3Hash
 				state.LastUpdated = time.Now().Unix()
-				if err := manifest.WriteState(statePath, state); err != nil {
-					slog.Warn("Failed to save backup state", "error", err)
-				}
+				writeErr := manifest.WriteState(statePath, state)
 				stateMu.Unlock()
+
+				if writeErr != nil {
+					slog.Error("Failed to save backup state", "error", writeErr)
+					errChan <- fmt.Errorf("failed to save state for part %s: %w", index, writeErr)
+
+					return
+				}
 
 				partInfoChan <- manifest.PartInfo{Index: index, Blake3Hash: blake3Hash}
 			}
