@@ -49,7 +49,8 @@ func NewLogger(filename string) (*slog.Logger, *os.File, error) {
 	file, err := os.OpenFile(
 		filename,
 		os.O_CREATE|os.O_APPEND|os.O_WRONLY,
-		0644,
+		0o644, // TODO: consider 0o640 to restrict log file access
+
 	)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to open log file: %w", err)

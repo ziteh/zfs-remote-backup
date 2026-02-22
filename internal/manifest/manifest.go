@@ -48,6 +48,7 @@ func GetSystemInfo() (SystemInfo, error) {
 
 func atomicWrite(filename string, data []byte) error {
 	tmp := filename + ".tmp"
+	// TODO: use 0o600 to restrict access to sensitive manifest data
 	if err := os.WriteFile(tmp, data, 0o644); err != nil {
 		return err
 	}
