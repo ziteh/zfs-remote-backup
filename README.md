@@ -9,6 +9,27 @@ Features:
 - [Age](https://github.com/FiloSottile/age) encryption.
 - [BLAKE3](https://github.com/BLAKE3-team/BLAKE3) integrity verification.
 
+Overview of backup process:
+
+```mermaid
+flowchart LR
+    A([Start]) --> B[zfs send snapshot]
+    B --> C[Split chunks]
+    C --> D[Encrypt]
+
+    subgraph W[Worker Pool]
+        D --> E[Upload S3 Glacier]
+        D -.-> d[Hash]
+    end
+
+    E --> F([Done])
+    B -.-> b[Hash]
+    b -.-> H[Manifest]
+    H -.-> I[Upload S3 Standard]
+    d -.-> H
+    I -.-> F
+```
+
 ## Usage
 
 Build:
