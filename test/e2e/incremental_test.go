@@ -40,18 +40,17 @@ func TestIncrementalBackup(t *testing.T) {
 	t.Run("GenerateKeys", func(t *testing.T) {
 		out := v.mustExec(t, remoteBin+" genkey")
 
-		lines := strings.Split(out, "\n")
-		for _, line := range lines {
+		for _, line := range strings.Split(out, "\n") {
 			if strings.HasPrefix(line, "Public key:") {
 				agePublicKey = strings.TrimSpace(strings.TrimPrefix(line, "Public key:"))
-			}
-			if strings.HasPrefix(line, "Private key:") {
-				privateKey := strings.TrimSpace(strings.TrimPrefix(line, "Private key:"))
-				v.writeFile(t, incKeyPath, privateKey)
 			}
 		}
 
 		require.NotEmpty(t, agePublicKey, "failed to extract public key")
+
+		// genkey writes private key to zrb_private.key; move it to the test path
+		v.mustExec(t, "mv zrb_private.key "+incKeyPath)
+		v.exec("rm -f zrb_public.key")
 	})
 
 	t.Run("PrepareData", func(t *testing.T) {
