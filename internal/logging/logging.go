@@ -57,11 +57,11 @@ func NewLogger(filename string) (*slog.Logger, *os.File, error) {
 	}
 
 	jsonHandler := slog.NewJSONHandler(file, &slog.HandlerOptions{
-		Level: slog.LevelInfo,
+		Level: slog.LevelDebug, // TODO: make log level configurable
 	})
 
 	consoleHandler := slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
-		Level: slog.LevelDebug,
+		Level: slog.LevelInfo, // TODO: make log level configurable
 	})
 
 	handler := &multiHandler{
