@@ -101,6 +101,10 @@ zrb list --config config.yaml --task example_task --source s3
 zrb list --config config.yaml --task example_task --source s3 --level 1
 ```
 
+## Todo
+
+- Managing AWS credentials and file encryption passwords on TrueNAS can be a bit of a hassle (This is also why I use an asymmetric encryption tool Age), but TrueNAS's built-in Cloud Sync Tasks (based on rclone) actually handle both quite conveniently through the GUI. Consider using Cloud Sync Tasks to replace these functions.
+
 ## Legacy Implementations
 
 - [archive/rust-experimental/](https://github.com/ziteh/zfs-remote-backup/tree/feat/rust/archive/rust-experimental) - Exploratory Rust implementation (`feat/rust` branch).
