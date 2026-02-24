@@ -33,6 +33,7 @@ words:
   - mybucket
   - myminio
   - NOFILE
+  - rclone
   - softprops
   - ssooidc
   - stretchr

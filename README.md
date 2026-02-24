@@ -112,7 +112,7 @@ zrb backup --config config.yaml --task example_task --level 1
 
 ### List
 
-List available backups
+List available backups:
 
 ```bash
 # List all backup on S3
@@ -121,6 +121,19 @@ zrb list --config config.yaml --task example_task --source s3
 # Only level 1
 zrb list --config config.yaml --task example_task --source s3 --level 1
 ```
+
+### Restore
+
+Restore level 0 backup to a target dataset:
+
+```bash
+zrb restore --config config.yaml --task example_task --level 0 --target pool/restore_data --private-key ./zrb_private.key
+```
+
+To restore incremental backups (e.g., level 0 → 1 → 2), repeat for each level in order.
+
+> [!NOTE]
+> If backups are stored in S3 Glacier Deep Archive, you must first initiate a restore request through AWS and wait for the data to be thawed before downloading is possible.
 
 ## Todo
 
