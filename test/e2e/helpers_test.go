@@ -101,10 +101,10 @@ func (v *vm) writeFile(t *testing.T, remotePath, content string) {
 func buildBinary(t *testing.T) string {
 	t.Helper()
 	buildDir := "../../build"
-	binary := buildDir + "/zrb_linux_arm64"
+	binary := buildDir + "/zrb_dev"
 
 	cmd := exec.Command("go", "build", "-ldflags=-s -w", "-o", binary, "./../../cmd/zrb")
-	cmd.Env = append(os.Environ(), "GOOS=linux", "GOARCH=arm64")
+	cmd.Env = append(os.Environ(), "GOOS=linux")
 	out, err := cmd.CombinedOutput()
 	require.NoError(t, err, "build failed: %s", string(out))
 	return binary

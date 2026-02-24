@@ -16,11 +16,13 @@ ignorePaths:
   - go.sum
 words:
   - configsources
+  - coverprofile
   - cpuid
   - cpus
   - eventstream
   - filippo
   - genkey
+  - GOARCH
   - gofmt
   - golangci
   - gopkg

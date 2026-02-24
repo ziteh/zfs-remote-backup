@@ -11,9 +11,8 @@ ZFS Remote Backup (zrb) is a Go application for backing up ZFS snapshots to remo
 ### Build
 
 ```bash
-make build              # Build for current platform
-make build-linux        # Build for Linux amd64
-make build-all          # Build for all platforms
+make build              # Production build: Linux amd64 → build/zrb
+make build-dev          # Dev/VM build: Linux native arch → build/zrb_dev
 ```
 
 ### Run
@@ -29,9 +28,10 @@ make build-all          # Build for all platforms
 ### Testing
 
 ```bash
-make test               # Unit + E2E tests
+make test               # Unit tests only
 make test-unit          # Unit tests only (./internal/...)
-make test-e2e           # E2E tests only (./tests/e2e/)
+make test-e2e-vm        # E2E tests on Multipass VM (./test/e2e/)
+make test-all           # Unit + E2E tests
 make test-coverage      # Coverage report
 ```
 
@@ -54,7 +54,7 @@ internal/
 ├── restore/            - Restore command logic
 ├── list/               - List command logic
 └── keys/               - Key generation and testing
-tests/e2e/              - End-to-end tests
+test/e2e/               - End-to-end tests
 vm/                     - VM testing infrastructure
 docs/                   - Documentation
 build/                  - Build outputs
