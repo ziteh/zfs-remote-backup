@@ -211,6 +211,18 @@ func CheckPoolExists(pool string) error {
 	return nil
 }
 
+func Hold(tag, snapshot string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	return exec.CommandContext(ctx, "zfs", "hold", tag, snapshot).Run()
+}
+
+func Release(tag, snapshot string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	return exec.CommandContext(ctx, "zfs", "release", tag, snapshot).Run()
+}
+
 func CreateSnapshot(pool, dataset, prefix string) error {
 	date := time.Now().Format("2006-01-02_15-04")
 	fullSnapshotName := fmt.Sprintf("%s/%s@%s_%s", pool, dataset, prefix, date)

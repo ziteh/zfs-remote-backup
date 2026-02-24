@@ -350,6 +350,12 @@ func Run(ctx context.Context, configPath string, backupLevel int16, taskName str
 		Blake3Hash: blake3Hash,
 		S3Path:     filepath.Join(task.Pool, task.Dataset, taskDirName),
 	}
+
+	var oldSnapshot string
+	if currentLast.BackupLevels != nil && len(currentLast.BackupLevels) > int(backupLevel) && currentLast.BackupLevels[backupLevel] != nil {
+		oldSnapshot = currentLast.BackupLevels[backupLevel].Snapshot
+	}
+
 	if currentLast.BackupLevels == nil {
 		currentLast.BackupLevels = make([]*manifest.Ref, int(backupLevel)+1)
 	} else if len(currentLast.BackupLevels) <= int(backupLevel) {
@@ -359,10 +365,23 @@ func Run(ctx context.Context, configPath string, backupLevel int16, taskName str
 		}
 	}
 	currentLast.BackupLevels[backupLevel] = ref
+
+	// Hold the snapshot to prevent deletion while it's still referenced by last backup manifest
+	if err := zfs.Hold("zrb:last", targetSnapshot); err != nil {
+		slog.Warn("Failed to hold snapshot", "snapshot", targetSnapshot, "error", err)
+	}
+
 	if err := manifest.WriteLast(lastPath, &currentLast); err != nil {
 		return fmt.Errorf("failed to write last backup manifest: %w", err)
 	}
 	slog.Info("Last backup manifest written", "path", lastPath)
+
+	// Release hold on old snapshot if different from current target snapshot
+	if oldSnapshot != "" && oldSnapshot != targetSnapshot {
+		if err := zfs.Release("zrb:last", oldSnapshot); err != nil {
+			slog.Warn("Failed to release hold on previous snapshot", "snapshot", oldSnapshot, "error", err)
+		}
+	}
 
 	// Upload last backup manifest
 	if manifestBackend != nil {
