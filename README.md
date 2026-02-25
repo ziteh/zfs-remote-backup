@@ -1,17 +1,18 @@
 # ZFS Remote Backup (zrb)
 
-The goal is to back up data stored in [TrueNAS](https://www.truenas.com/)/[OpenZFS](https://openzfs.github.io/openzfs-docs/) to remote object storage services such as AWS S3 using snapshots, enabling off-site backups. Inspired by [someone1/zfsbackup-go](https://github.com/someone1/zfsbackup-go).
+`zrb` is a backup tool designed to back up data from [TrueNAS](https://www.truenas.com/)/[OpenZFS](https://openzfs.github.io/openzfs-docs/) to remote object storage services like AWS S3 in the form of snapshots. Inspired by [someone1/zfsbackup-go](https://github.com/someone1/zfsbackup-go).
 
 Features:
 
-- Specifically designed for S3 Glacier Deep Archive cold storage, optimal storage costs.
-- Full, differential, and incremental multi-level backups.
-- [Age](https://github.com/FiloSottile/age) encryption.
-- [BLAKE3](https://github.com/BLAKE3-team/BLAKE3) integrity verification.
-
-Overview of backup process:
+- Specifically designed for [AWS S3 Glacier Deep Archive](https://aws.amazon.com/s3/storage-classes/glacier/) cold storage, optimal storage costs.
+- Full and incremental multi-level backups.
+- [Age](https://github.com/FiloSottile/age) is used for end-to-end encryption (E2EE).
+- [BLAKE3](https://github.com/BLAKE3-team/BLAKE3) hash is used for integrity verification.
 
 ```mermaid
+---
+title: Overview of Backup Process
+---
 flowchart LR
     A([Start]) --> B[zfs send snapshot]
     B --> C[Split chunks]
@@ -133,20 +134,20 @@ zrb restore --config config.yaml --task example_task --level 0 --target pool/res
 To restore incremental backups (e.g., level 0 → 1 → 2), repeat for each level in order.
 
 > [!NOTE]
-> If backups are stored in S3 Glacier Deep Archive, you must first initiate a restore request through AWS and wait for the data to be thawed before downloading is possible.
+> If backups are stored in S3 Glacier, you must first initiate a restore request through AWS and wait for the data to be thawed before downloading is possible.
 
 ## Todo
 
 - Managing AWS credentials and file encryption passwords on TrueNAS can be a bit of a hassle (This is also why I use an asymmetric encryption tool Age), but TrueNAS's built-in Cloud Sync Tasks (based on rclone) actually handle both quite conveniently through the GUI. Consider using Cloud Sync Tasks to replace these functions.
 
-## Legacy Implementations
+## Implementations
 
-- [archive/rust-experimental/](https://github.com/ziteh/zfs-remote-backup/tree/feat/rust/archive/rust-experimental) - Exploratory Rust implementation (`feat/rust` branch).
+- [rust-experimental](https://github.com/ziteh/zfs-remote-backup/tree/feat/rust/archive/rust-experimental) - Exploratory Rust implementation (`feat/rust` branch).
 
 ## License
 
 > [!WARNING]
-> This software is provided *as is*, without warranty or conditions of any kind.
+> This software is provided AS IS, without warranty or conditions of any kind.
 >
 > Please carefully review how this software works and what actions it performs.
 > Following the [3-2-1 Backup Rule](https://www.backblaze.com/blog/the-3-2-1-backup-strategy/) can reduce the risk of data loss due to hardware failure or accidents.
