@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
@@ -202,7 +201,7 @@ func main() {
 			fmt.Fprintln(os.Stderr, "\n⚠ Backup interrupted by user")
 			os.Exit(130)
 		}
-		slog.Error("CLI error", "error", err)
+		fmt.Fprintln(os.Stderr, "Error:", err)
 		os.Exit(1)
 	}
 }
